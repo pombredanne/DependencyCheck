@@ -38,6 +38,28 @@ import java.util.Properties;
  * @author Jeremy Long
  */
 public final class Settings {
+    /**
+     * The logger.
+     */
+    private static final Logger LOGGER = LoggerFactory.getLogger(Settings.class);
+    /**
+     * The properties file location.
+     */
+    private static final String PROPERTIES_FILE = "dependencycheck.properties";
+    /**
+     * Thread local settings.
+     */
+    private static final ThreadLocal<Settings> LOCAL_SETTINGS = new ThreadLocal<Settings>();
+    /**
+     * The properties.
+     */
+    private Properties props = null;
+
+    /**
+     * A reference to the temporary directory; used incase it needs to be
+     * deleted during cleanup.
+     */
+    private static File tempDirectory = null;
 
     //<editor-fold defaultstate="collapsed" desc="KEYS used to access settings">
     /**
@@ -45,13 +67,6 @@ public final class Settings {
      */
     public static final class KEYS {
 
-        /**
-         * private constructor because this is a "utility" class containing
-         * constants
-         */
-        private KEYS() {
-            //do nothing
-        }
         /**
          * The key to obtain the application name.
          */
@@ -116,13 +131,21 @@ public final class Settings {
         /**
          * The properties key for the URL to retrieve the "meta" data from about
          * the CVE entries.
+         *
+         * @deprecated this is not currently used
          */
+        @Deprecated
         public static final String CVE_META_URL = "cve.url.meta";
         /**
          * The properties key for the URL to retrieve the recently modified and
          * added CVE entries (last 8 days) using the 2.0 schema.
          */
         public static final String CVE_MODIFIED_20_URL = "cve.url-2.0.modified";
+        /**
+         * The properties key for the URL to retrieve the recently modified and
+         * added CVE entries (last 8 days) using the 2.0 schema.
+         */
+        public static final String CVE_ORIGINAL_MODIFIED_20_URL = "cve.url-2.0.original";
         /**
          * The properties key for the URL to retrieve the recently modified and
          * added CVE entries (last 8 days) using the 1.2 schema.
@@ -293,7 +316,8 @@ public final class Settings {
          */
         public static final String ANALYZER_COCOAPODS_ENABLED = "analyzer.cocoapods.enabled";
         /**
-         * The properties key for whether the SWIFT package manager analyzer is enabled.
+         * The properties key for whether the SWIFT package manager analyzer is
+         * enabled.
          */
         public static final String ANALYZER_SWIFT_PACKAGE_MANAGER_ENABLED = "analyzer.swift.package.manager.enabled";
         /**
@@ -320,7 +344,6 @@ public final class Settings {
          * The key to obtain the VFEED connection string.
          */
         public static final String VFEED_CONNECTION_STRING = "vfeed.connection_string";
-
         /**
          * The key to obtain the base download URL for the VFeed data file.
          */
@@ -333,30 +356,75 @@ public final class Settings {
          * The key to obtain the VFeed update status.
          */
         public static final String VFEED_UPDATE_STATUS = "vfeed.update_status";
-
         /**
-         * The HTTP request method for query last modified date.
+         * The key to the HTTP request method for query last modified date.
          */
         public static final String DOWNLOADER_QUICK_QUERY_TIMESTAMP = "downloader.quick.query.timestamp";
+        /**
+         * The key to HTTP protocol list to use.
+         */
+        public static final String DOWNLOADER_TLS_PROTOCOL_LIST = "downloader.tls.protocols";
+        /**
+         * The key to determine if the CPE analyzer is enabled.
+         */
+        public static final String ANALYZER_CPE_ENABLED = "analyzer.cpe.enabled";
+        /**
+         * The key to determine if the CPE Suppression analyzer is enabled.
+         */
+        public static final String ANALYZER_CPE_SUPPRESSION_ENABLED = "analyzer.cpesuppression.enabled";
+        /**
+         * The key to determine if the Dependency Bundling analyzer is enabled.
+         */
+        public static final String ANALYZER_DEPENDENCY_BUNDLING_ENABLED = "analyzer.dependencybundling.enabled";
+        /**
+         * The key to determine if the Dependency Merging analyzer is enabled.
+         */
+        public static final String ANALYZER_DEPENDENCY_MERGING_ENABLED = "analyzer.dependencymerging.enabled";
+        /**
+         * The key to determine if the False Positive analyzer is enabled.
+         */
+        public static final String ANALYZER_FALSE_POSITIVE_ENABLED = "analyzer.falsepositive.enabled";
+        /**
+         * The key to determine if the File Name analyzer is enabled.
+         */
+        public static final String ANALYZER_FILE_NAME_ENABLED = "analyzer.filename.enabled";
+        /**
+         * The key to determine if the Hint analyzer is enabled.
+         */
+        public static final String ANALYZER_HINT_ENABLED = "analyzer.hint.enabled";
+        /**
+         * The key to determine if the Version Filter analyzer is enabled.
+         */
+        public static final String ANALYZER_VERSION_FILTER_ENABLED = "analyzer.versionfilter.enabled";
+        /**
+         * The key to determine if the NVD CVE analyzer is enabled.
+         */
+        public static final String ANALYZER_NVD_CVE_ENABLED = "analyzer.nvdcve.enabled";
+        /**
+         * The key to determine if the Vulnerability Suppression analyzer is
+         * enabled.
+         */
+        public static final String ANALYZER_VULNERABILITY_SUPPRESSION_ENABLED = "analyzer.vulnerabilitysuppression.enabled";
+        /**
+         * The key to determine if the NVD CVE updater should be enabled.
+         */
+        public static final String UPDATE_NVDCVE_ENABLED = "updater.nvdcve.enabled";
+        /**
+         * The key to determine if dependency-check should check if there is a
+         * new version available.
+         */
+        public static final String UPDATE_VERSION_CHECK_ENABLED = "updater.versioncheck.enabled";
+
+        /**
+         * private constructor because this is a "utility" class containing
+         * constants
+         */
+        private KEYS() {
+            //do nothing
+        }
     }
     //</editor-fold>
 
-    /**
-     * The logger.
-     */
-    private static final Logger LOGGER = LoggerFactory.getLogger(Settings.class);
-    /**
-     * The properties file location.
-     */
-    private static final String PROPERTIES_FILE = "dependencycheck.properties";
-    /**
-     * Thread local settings.
-     */
-    private static final ThreadLocal<Settings> LOCAL_SETTINGS = new ThreadLocal<Settings>();
-    /**
-     * The properties.
-     */
-    private Properties props = null;
 
     /**
      * Private constructor for the Settings class. This class loads the
@@ -370,8 +438,11 @@ public final class Settings {
         try {
             in = this.getClass().getClassLoader().getResourceAsStream(propertiesFilePath);
             props.load(in);
+        } catch (NullPointerException ex) {
+            LOGGER.error("Did not find settings file '{}'.", propertiesFilePath);
+            LOGGER.debug("", ex);
         } catch (IOException ex) {
-            LOGGER.error("Unable to load default settings.");
+            LOGGER.error("Unable to load settings from '{}'.", propertiesFilePath);
             LOGGER.debug("", ex);
         } finally {
             if (in != null) {
@@ -419,17 +490,10 @@ public final class Settings {
      * @param deleteTemporary flag indicating whether any temporary directories
      * generated should be removed
      */
-    public static void cleanup(boolean deleteTemporary) {
+    public static synchronized void cleanup(boolean deleteTemporary) {
         if (deleteTemporary && tempDirectory != null && tempDirectory.exists()) {
             FileUtils.delete(tempDirectory);
-            if (tempDirectory.exists()) {
-                try {
-                    Thread.sleep(2000);
-                } catch (InterruptedException ex) {
-                    LOGGER.trace("ignore", ex);
-                }
-                FileUtils.delete(tempDirectory);
-            }
+            tempDirectory = null;
         }
         try {
             LOCAL_SETTINGS.remove();
@@ -731,26 +795,18 @@ public final class Settings {
     }
 
     /**
-     * A reference to the temporary directory; used incase it needs to be
-     * deleted during cleanup.
-     */
-    private static File tempDirectory = null;
-
-    /**
      * Returns the temporary directory.
      *
      * @return the temporary directory
      * @throws java.io.IOException thrown if the temporary directory does not
      * exist and cannot be created
      */
-    public static File getTempDirectory() throws IOException {
-        final File tmpDir = new File(Settings.getString(Settings.KEYS.TEMP_DIRECTORY, System.getProperty("java.io.tmpdir")), "dctemp");
-        if (!tmpDir.exists() && !tmpDir.mkdirs()) {
-            final String msg = String.format("Unable to make a temporary folder '%s'", tmpDir.getPath());
-            throw new IOException(msg);
+    public static synchronized File getTempDirectory() throws IOException {
+        if (tempDirectory == null) {
+            final File baseTemp = new File(Settings.getString(Settings.KEYS.TEMP_DIRECTORY, System.getProperty("java.io.tmpdir")));
+            tempDirectory = FileUtils.createTempDirectory(baseTemp);
         }
-        tempDirectory = tmpDir;
-        return tmpDir;
+        return tempDirectory;
     }
 
     /**

@@ -138,10 +138,7 @@ public class VulnerableSoftware extends IndexEntry implements Serializable, Comp
             return false;
         }
         final VulnerableSoftware other = (VulnerableSoftware) obj;
-        if ((this.name == null) ? (other.getName() != null) : !this.name.equals(other.getName())) {
-            return false;
-        }
-        return true;
+        return !((this.name == null) ? (other.getName() != null) : !this.name.equals(other.getName()));
     }
 
     /**
@@ -226,14 +223,24 @@ public class VulnerableSoftware extends IndexEntry implements Serializable, Comp
 
     /**
      * Determines if the string passed in is a positive integer.
+     * To be counted as a positive integer, the string must only contain 0-9
+     * and must not have any leading zeros (though "0" is a valid positive
+     * integer).
      *
      * @param str the string to test
      * @return true if the string only contains 0-9, otherwise false.
      */
-    private static boolean isPositiveInteger(final String str) {
+    protected static boolean isPositiveInteger(final String str) {
         if (str == null || str.isEmpty()) {
             return false;
         }
+
+        // numbers with leading zeros should not be treated as numbers
+        // (e.g. when comparing "01" <-> "1")
+        if (str.charAt(0) == '0' && str.length() > 1) {
+            return false;
+        }
+
         for (int i = 0; i < str.length(); i++) {
             final char c = str.charAt(i);
             if (c < '0' || c > '9') {

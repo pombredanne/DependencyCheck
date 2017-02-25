@@ -23,7 +23,7 @@ import org.slf4j.LoggerFactory;
 import java.io.File;
 import java.io.FileInputStream;
 import java.io.IOException;
-import java.nio.MappedByteBuffer;
+import java.nio.ByteBuffer;
 import java.nio.channels.FileChannel;
 import java.security.MessageDigest;
 import java.security.NoSuchAlgorithmException;
@@ -40,6 +40,10 @@ public final class Checksum {
      * The logger.
      */
     private static final Logger LOGGER = LoggerFactory.getLogger(Checksum.class);
+    /**
+     * Hex code characters used in getHex.
+     */
+    private static final String HEXES = "0123456789abcdef";
 
     /**
      * Private constructor for a utility class.
@@ -49,36 +53,42 @@ public final class Checksum {
 
     /**
      * <p>
-     * Creates the cryptographic checksum of a given file using the specified algorithm.</p>
+     * Creates the cryptographic checksum of a given file using the specified
+     * algorithm.</p>
      *
      * @param algorithm the algorithm to use to calculate the checksum
      * @param file the file to calculate the checksum for
      * @return the checksum
      * @throws IOException when the file does not exist
-     * @throws NoSuchAlgorithmException when an algorithm is specified that does not exist
+     * @throws NoSuchAlgorithmException when an algorithm is specified that does
+     * not exist
      */
     public static byte[] getChecksum(String algorithm, File file) throws NoSuchAlgorithmException, IOException {
-        MessageDigest digest = MessageDigest.getInstance(algorithm);
+        final MessageDigest md = MessageDigest.getInstance(algorithm);
         FileInputStream fis = null;
+        FileChannel ch = null;
         try {
             fis = new FileInputStream(file);
-            FileChannel ch = fis.getChannel();
-            long remainingToRead = file.length();
-            long start = 0;
-            while (remainingToRead > 0) {
-                long amountToRead;
-                if (remainingToRead > Integer.MAX_VALUE) {
-                    remainingToRead -= Integer.MAX_VALUE;
-                    amountToRead = Integer.MAX_VALUE;
-                } else {
-                    amountToRead = remainingToRead;
-                    remainingToRead = 0;
-                }
-                MappedByteBuffer byteBuffer = ch.map(FileChannel.MapMode.READ_ONLY, start, amountToRead);
-                digest.update(byteBuffer);
-                start += amountToRead;
+            ch = fis.getChannel();
+            final ByteBuffer buf = ByteBuffer.allocateDirect(8192);
+            int b = ch.read(buf);
+            while (b != -1 && b != 0) {
+                buf.flip();
+                final byte[] bytes = new byte[b];
+                buf.get(bytes);
+                md.update(bytes, 0, b);
+                buf.clear();
+                b = ch.read(buf);
             }
+            return md.digest();
         } finally {
+            if (ch != null) {
+                try {
+                    ch.close();
+                } catch (IOException ex) {
+                    LOGGER.trace("Error closing channel '{}'.", file.getName(), ex);
+                }
+            }
             if (fis != null) {
                 try {
                     fis.close();
@@ -87,7 +97,6 @@ public final class Checksum {
                 }
             }
         }
-        return digest.digest();
     }
 
     /**
@@ -99,7 +108,7 @@ public final class Checksum {
      * @throws NoSuchAlgorithmException when the MD5 algorithm is not available
      */
     public static String getMD5Checksum(File file) throws IOException, NoSuchAlgorithmException {
-        byte[] b = getChecksum("MD5", file);
+        final byte[] b = getChecksum("MD5", file);
         return getHex(b);
     }
 
@@ -112,13 +121,9 @@ public final class Checksum {
      * @throws NoSuchAlgorithmException when the SHA1 algorithm is not available
      */
     public static String getSHA1Checksum(File file) throws IOException, NoSuchAlgorithmException {
-        byte[] b = getChecksum("SHA1", file);
+        final byte[] b = getChecksum("SHA1", file);
         return getHex(b);
     }
-    /**
-     * Hex code characters used in getHex.
-     */
-    private static final String HEXES = "0123456789abcdef";
 
     /**
      * <p>

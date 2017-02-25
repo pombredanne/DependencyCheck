@@ -30,6 +30,7 @@ import org.apache.maven.plugins.annotations.Mojo;
 import org.apache.maven.plugins.annotations.Parameter;
 import org.apache.maven.plugins.annotations.ResolutionScope;
 import org.apache.maven.project.MavenProject;
+import org.owasp.dependencycheck.Engine;
 import org.owasp.dependencycheck.data.nvdcve.DatabaseException;
 import org.owasp.dependencycheck.exception.ExceptionCollection;
 import org.owasp.dependencycheck.exception.ReportException;
@@ -52,6 +53,13 @@ import org.owasp.dependencycheck.utils.Settings;
 public class AggregateMojo extends BaseDependencyCheckMojo {
 
     /**
+     * The name of the report in the site.
+     */
+    @SuppressWarnings("CanBeFinal")
+    @Parameter(property = "name", defaultValue = "dependency-check:aggregate", required = true)
+    private String name = "dependency-check:aggregate";
+
+    /**
      * Executes the aggregate dependency-check goal. This runs dependency-check
      * and generates the subsequent reports.
      *
@@ -62,7 +70,7 @@ public class AggregateMojo extends BaseDependencyCheckMojo {
      */
     @Override
     public void runCheck() throws MojoExecutionException, MojoFailureException {
-        final MavenEngine engine = loadEngine();
+        final Engine engine = loadEngine();
         if (engine == null) {
             return;
         }
@@ -123,9 +131,9 @@ public class AggregateMojo extends BaseDependencyCheckMojo {
                 exCol.addException(ex);
             }
             if (this.isFailOnError()) {
-                throw new MojoExecutionException("One or more exceptions occured during dependency-check analysis", exCol);
+                throw new MojoExecutionException("One or more exceptions occurred during dependency-check analysis", exCol);
             } else {
-                getLog().debug("One or more exceptions occured during dependency-check analysis", exCol);
+                getLog().debug("One or more exceptions occurred during dependency-check analysis", exCol);
             }
         }
         showSummary(this.getProject(), engine.getDependencies());
@@ -226,21 +234,21 @@ public class AggregateMojo extends BaseDependencyCheckMojo {
     /**
      * Initializes the engine.
      *
-     * @return the MavenEngine used to execute dependency-check
+     * @return the Engine used to execute dependency-check
      * @throws MojoExecutionException thrown if there is an exception running
      * the Mojo
      * @throws MojoFailureException thrown if dependency-check is configured to
      * fail the build if severe CVEs are identified.
      */
-    protected MavenEngine loadEngine() throws MojoExecutionException, MojoFailureException {
-        MavenEngine engine = null;
+    protected Engine loadEngine() throws MojoExecutionException, MojoFailureException {
+        Engine engine = null;
         try {
             engine = initializeEngine();
         } catch (DatabaseException ex) {
             if (getLog().isDebugEnabled()) {
                 getLog().debug("Database connection error", ex);
             }
-            final String msg = "An exception occured connecting to the local database. Please see the log file for more details.";
+            final String msg = "An exception occurred connecting to the local database. Please see the log file for more details.";
             if (this.isFailOnError()) {
                 throw new MojoExecutionException(msg, ex);
             }
@@ -253,13 +261,6 @@ public class AggregateMojo extends BaseDependencyCheckMojo {
     public boolean canGenerateReport() {
         return true; //aggregate always returns true for now - we can look at a more complicated/acurate solution later
     }
-
-    /**
-     * The name of the report in the site.
-     */
-    @SuppressWarnings("CanBeFinal")
-    @Parameter(property = "name", defaultValue = "dependency-check:aggregate", required = true)
-    private String name = "dependency-check:aggregate";
 
     /**
      * Returns the report name.

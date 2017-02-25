@@ -75,7 +75,7 @@ public class CentralAnalyzer extends AbstractFileTypeAnalyzer {
      * The analyzer should be disabled if there are errors, so this is a flag to
      * determine if such an error has occurred.
      */
-    private boolean errorFlag = false;
+    private volatile boolean errorFlag = false;
 
     /**
      * The searcher itself.
@@ -193,7 +193,7 @@ public class CentralAnalyzer extends AbstractFileTypeAnalyzer {
      * @throws AnalysisException when there's an exception during analysis
      */
     @Override
-    public void analyzeFileType(Dependency dependency, Engine engine) throws AnalysisException {
+    public void analyzeDependency(Dependency dependency, Engine engine) throws AnalysisException {
         if (errorFlag || !isEnabled()) {
             return;
         }
@@ -229,7 +229,8 @@ public class CentralAnalyzer extends AbstractFileTypeAnalyzer {
                         LOGGER.warn("Unable to download pom.xml for {} from Central; "
                                 + "this could result in undetected CPE/CVEs.", dependency.getFileName());
                     } finally {
-                        if (pomFile != null && !FileUtils.deleteQuietly(pomFile)) {
+                        if (pomFile != null && pomFile.exists() && !FileUtils.deleteQuietly(pomFile)) {
+                            LOGGER.debug("Failed to delete temporary pom file {}", pomFile.toString());
                             pomFile.deleteOnExit();
                         }
                     }

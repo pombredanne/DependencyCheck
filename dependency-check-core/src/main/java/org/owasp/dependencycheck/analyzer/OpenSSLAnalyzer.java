@@ -102,7 +102,7 @@ public class OpenSSLAnalyzer extends AbstractFileTypeAnalyzer {
      * @param openSSLVersionConstant The open SSL version
      * @return the version of openssl
      */
-    static String getOpenSSLVersion(long openSSLVersionConstant) {
+    protected static String getOpenSSLVersion(long openSSLVersionConstant) {
         final long major = openSSLVersionConstant >>> MAJOR_OFFSET;
         final long minor = (openSSLVersionConstant & MINOR_MASK) >>> MINOR_OFFSET;
         final long fix = (openSSLVersionConstant & FIX_MASK) >>> FIX_OFFSET;
@@ -162,7 +162,7 @@ public class OpenSSLAnalyzer extends AbstractFileTypeAnalyzer {
      * analyzing the dependency
      */
     @Override
-    protected void analyzeFileType(Dependency dependency, Engine engine)
+    protected void analyzeDependency(Dependency dependency, Engine engine)
             throws AnalysisException {
         final File file = dependency.getActualFile();
         final String parentName = file.getParentFile().getName();

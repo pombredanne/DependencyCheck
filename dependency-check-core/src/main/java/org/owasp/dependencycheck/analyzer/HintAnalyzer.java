@@ -51,7 +51,19 @@ import org.xml.sax.SAXException;
  *
  * @author Jeremy Long
  */
-public class HintAnalyzer extends AbstractAnalyzer implements Analyzer {
+public class HintAnalyzer extends AbstractAnalyzer {
+ /**
+     * The Logger for use throughout the class
+     */
+    private static final Logger LOGGER = LoggerFactory.getLogger(HintAnalyzer.class);
+    /**
+     * The name of the hint rule file
+     */
+    private static final String HINT_RULE_FILE_NAME = "dependencycheck-base-hint.xml";
+    /**
+     * The collection of hints.
+     */
+    private Hints hints;
 
     //<editor-fold defaultstate="collapsed" desc="All standard implementation details of Analyzer">
     /**
@@ -84,14 +96,24 @@ public class HintAnalyzer extends AbstractAnalyzer implements Analyzer {
     }
 
     /**
+     * <p>
+     * Returns the setting key to determine if the analyzer is enabled.</p>
+     *
+     * @return the key for the analyzer's enabled property
+     */
+    @Override
+    protected String getAnalyzerEnabledSettingKey() {
+        return Settings.KEYS.ANALYZER_HINT_ENABLED;
+    }
+
+    /**
      * The initialize method does nothing for this Analyzer.
      *
      * @throws InitializationException thrown if there is an exception
      */
     @Override
-    public void initialize() throws InitializationException {
+    public void initializeAnalyzer() throws InitializationException {
         try {
-            super.initialize();
             loadHintRules();
         } catch (HintParseException ex) {
             LOGGER.debug("Unable to parse hint file", ex);
@@ -99,20 +121,7 @@ public class HintAnalyzer extends AbstractAnalyzer implements Analyzer {
         }
     }
     //</editor-fold>
-
-    /**
-     * The Logger for use throughout the class
-     */
-    private static final Logger LOGGER = LoggerFactory.getLogger(HintAnalyzer.class);
-    /**
-     * The name of the hint rule file
-     */
-    private static final String HINT_RULE_FILE_NAME = "dependencycheck-base-hint.xml";
-    /**
-     * The collection of hints.
-     */
-    private Hints hints;
-
+   
     /**
      * The HintAnalyzer uses knowledge about a dependency to add additional
      * information to help in identification of identifiers or vulnerabilities.
@@ -123,42 +132,69 @@ public class HintAnalyzer extends AbstractAnalyzer implements Analyzer {
      * the dependency.
      */
     @Override
-    public void analyze(Dependency dependency, Engine engine) throws AnalysisException {
+    protected void analyzeDependency(Dependency dependency, Engine engine) throws AnalysisException {
         for (HintRule hint : hints.getHintRules()) {
-            boolean shouldAdd = false;
+            boolean matchFound = false;
             for (Evidence given : hint.getGivenVendor()) {
                 if (dependency.getVendorEvidence().getEvidence().contains(given)) {
-                    shouldAdd = true;
+                    matchFound = true;
                     break;
                 }
             }
-            if (!shouldAdd) {
+            if (!matchFound) {
                 for (Evidence given : hint.getGivenProduct()) {
                     if (dependency.getProductEvidence().getEvidence().contains(given)) {
-                        shouldAdd = true;
+                        matchFound = true;
                         break;
                     }
                 }
             }
-            if (!shouldAdd) {
-                for (PropertyType pt : hint.getFilenames()) {
-                    if (pt.matches(dependency.getFileName())) {
-                        shouldAdd = true;
+            if (!matchFound) {
+                for (Evidence given : hint.getGivenVersion()) {
+                    if (dependency.getVersionEvidence().getEvidence().contains(given)) {
+                        matchFound = true;
+                        break;
                     }
                 }
             }
-            if (shouldAdd) {
+            if (!matchFound) {
+                for (PropertyType pt : hint.getFilenames()) {
+                    if (pt.matches(dependency.getFileName())) {
+                        matchFound = true;
+                        break;
+                    }
+                }
+            }
+            if (matchFound) {
                 for (Evidence e : hint.getAddVendor()) {
                     dependency.getVendorEvidence().addEvidence(e);
                 }
                 for (Evidence e : hint.getAddProduct()) {
                     dependency.getProductEvidence().addEvidence(e);
                 }
+                for (Evidence e : hint.getAddVersion()) {
+                    dependency.getVersionEvidence().addEvidence(e);
+                }
+                for (Evidence e : hint.getRemoveVendor()) {
+                    if (dependency.getVendorEvidence().getEvidence().contains(e)) {
+                        dependency.getVendorEvidence().getEvidence().remove(e);
+                    }
+                }
+                for (Evidence e : hint.getRemoveProduct()) {
+                    if (dependency.getProductEvidence().getEvidence().contains(e)) {
+                        dependency.getProductEvidence().getEvidence().remove(e);
+                    }
+                }
+                for (Evidence e : hint.getRemoveVersion()) {
+                    if (dependency.getVersionEvidence().getEvidence().contains(e)) {
+                        dependency.getVersionEvidence().getEvidence().remove(e);
+                    }
+                }
             }
         }
 
         final Iterator<Evidence> itr = dependency.getVendorEvidence().iterator();
-        final List<Evidence> newEntries = new ArrayList<Evidence>();
+        final List<Evidence> newEntries = new ArrayList<>();
         while (itr.hasNext()) {
             final Evidence e = itr.next();
             for (VendorDuplicatingHintRule dhr : hints.getVendorDuplicatingHintRules()) {
@@ -171,108 +207,6 @@ public class HintAnalyzer extends AbstractAnalyzer implements Analyzer {
         for (Evidence e : newEntries) {
             dependency.getVendorEvidence().addEvidence(e);
         }
-
-        //<editor-fold defaultstate="collapsed" desc="Old implementation">
-        /*
-        final Evidence springTest1 = new Evidence("Manifest",
-                "Implementation-Title",
-                "Spring Framework",
-                Confidence.HIGH);
-
-        final Evidence springTest2 = new Evidence("Manifest",
-                "Implementation-Title",
-                "org.springframework.core",
-                Confidence.HIGH);
-
-        final Evidence springTest3 = new Evidence("Manifest",
-                "Implementation-Title",
-                "spring-core",
-                Confidence.HIGH);
-
-        final Evidence springTest4 = new Evidence("jar",
-                "package name",
-                "springframework",
-                Confidence.LOW);
-
-        final Evidence springSecurityTest1 = new Evidence("Manifest",
-                "Bundle-Name",
-                "Spring Security Core",
-                Confidence.MEDIUM);
-
-        final Evidence springSecurityTest2 = new Evidence("pom",
-                "artifactid",
-                "spring-security-core",
-                Confidence.HIGH);
-
-        final Evidence symfony = new Evidence("composer.lock",
-            "vendor",
-            "symfony",
-            Confidence.HIGHEST);
-
-        final Evidence zendframeworkVendor = new Evidence("composer.lock",
-            "vendor",
-            "zendframework",
-            Confidence.HIGHEST);
-
-        final Evidence zendframeworkProduct = new Evidence("composer.lock",
-            "product",
-            "zendframework",
-            Confidence.HIGHEST);
-
-        //springsource/vware problem
-        final Set<Evidence> product = dependency.getProductEvidence().getEvidence();
-        final Set<Evidence> vendor = dependency.getVendorEvidence().getEvidence();
-
-        if (product.contains(springTest1) || product.contains(springTest2) || product.contains(springTest3)
-                || (dependency.getFileName().contains("spring") && product.contains(springTest4))) {
-            dependency.getProductEvidence().addEvidence("hint analyzer", "product", "springsource spring framework", Confidence.HIGH);
-            dependency.getVendorEvidence().addEvidence("hint analyzer", "vendor", "SpringSource", Confidence.HIGH);
-            dependency.getVendorEvidence().addEvidence("hint analyzer", "vendor", "vmware", Confidence.HIGH);
-            dependency.getVendorEvidence().addEvidence("hint analyzer", "vendor", "pivotal", Confidence.HIGH);
-        }
-
-        if (vendor.contains(springTest4)) {
-            dependency.getProductEvidence().addEvidence("hint analyzer", "product", "springsource_spring_framework", Confidence.HIGH);
-            dependency.getVendorEvidence().addEvidence("hint analyzer", "vendor", "vmware", Confidence.HIGH);
-            dependency.getVendorEvidence().addEvidence("hint analyzer", "vendor", "pivotal", Confidence.HIGH);
-        }
-
-        if (product.contains(springSecurityTest1) || product.contains(springSecurityTest2)) {
-            dependency.getProductEvidence().addEvidence("hint analyzer", "product", "springsource_spring_security", Confidence.HIGH);
-            dependency.getVendorEvidence().addEvidence("hint analyzer", "vendor", "SpringSource", Confidence.HIGH);
-            dependency.getVendorEvidence().addEvidence("hint analyzer", "vendor", "vmware", Confidence.HIGH);
-        }
-
-        if (vendor.contains(symfony)) {
-            dependency.getVendorEvidence().addEvidence("hint analyzer", "vendor", "sensiolabs", Confidence.HIGHEST);
-        }
-
-        if (vendor.contains(zendframeworkVendor)) {
-            dependency.getVendorEvidence().addEvidence("hint analyzer", "vendor", "zend", Confidence.HIGHEST);
-        }
-
-        if (product.contains(zendframeworkProduct)) {
-            dependency.getProductEvidence().addEvidence("hint analyzer", "vendor", "zend_framework", Confidence.HIGHEST);
-        }
-
-        //sun/oracle problem
-        final Iterator<Evidence> itr = dependency.getVendorEvidence().iterator();
-        final List<Evidence> newEntries = new ArrayList<Evidence>();
-        while (itr.hasNext()) {
-            final Evidence e = itr.next();
-            if ("sun".equalsIgnoreCase(e.getValue(false))) {
-                final Evidence newEvidence = new Evidence(e.getSource() + " (hint)", e.getName(), "oracle", e.getConfidence());
-                newEntries.add(newEvidence);
-            } else if ("oracle".equalsIgnoreCase(e.getValue(false))) {
-                final Evidence newEvidence = new Evidence(e.getSource() + " (hint)", e.getName(), "sun", e.getConfidence());
-                newEntries.add(newEvidence);
-            }
-        }
-        for (Evidence e : newEntries) {
-            dependency.getVendorEvidence().addEvidence(e);
-        }
-         */
-        //</editor-fold>
     }
 
     /**
@@ -285,10 +219,7 @@ public class HintAnalyzer extends AbstractAnalyzer implements Analyzer {
         File file = null;
         try {
             hints = parser.parseHints(this.getClass().getClassLoader().getResourceAsStream(HINT_RULE_FILE_NAME));
-        } catch (HintParseException ex) {
-            LOGGER.error("Unable to parse the base hint data file");
-            LOGGER.debug("Unable to parse the base hint data file", ex);
-        } catch (SAXException ex) {
+        } catch (HintParseException | SAXException ex) {
             LOGGER.error("Unable to parse the base hint data file");
             LOGGER.debug("Unable to parse the base hint data file", ex);
         }
@@ -311,21 +242,15 @@ public class HintAnalyzer extends AbstractAnalyzer implements Analyzer {
             } else {
                 file = new File(filePath);
                 if (!file.exists()) {
-                    InputStream fromClasspath = null;
-                    try {
-                        fromClasspath = this.getClass().getClassLoader().getResourceAsStream(filePath);
+                    try (InputStream fromClasspath = this.getClass().getClassLoader().getResourceAsStream(filePath)) {
                         if (fromClasspath != null) {
                             deleteTempFile = true;
                             file = FileUtils.getTempFile("hint", "xml");
                             try {
                                 org.apache.commons.io.FileUtils.copyInputStreamToFile(fromClasspath, file);
                             } catch (IOException ex) {
-                                throw new HintParseException("Unable to locate suppressions file in classpath", ex);
+                                throw new HintParseException("Unable to locate hints file in classpath", ex);
                             }
-                        }
-                    } finally {
-                        if (fromClasspath != null) {
-                            fromClasspath.close();
                         }
                     }
                 }

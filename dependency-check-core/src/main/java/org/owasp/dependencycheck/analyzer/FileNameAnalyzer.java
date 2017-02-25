@@ -27,6 +27,7 @@ import org.owasp.dependencycheck.dependency.Confidence;
 import org.owasp.dependencycheck.dependency.Dependency;
 import org.owasp.dependencycheck.utils.DependencyVersion;
 import org.owasp.dependencycheck.utils.DependencyVersionUtil;
+import org.owasp.dependencycheck.utils.Settings;
 
 /**
  *
@@ -34,7 +35,7 @@ import org.owasp.dependencycheck.utils.DependencyVersionUtil;
  *
  * @author Jeremy Long
  */
-public class FileNameAnalyzer extends AbstractAnalyzer implements Analyzer {
+public class FileNameAnalyzer extends AbstractAnalyzer {
 
     //<editor-fold defaultstate="collapsed" desc="All standard implementation details of Analyzer">
     /**
@@ -65,15 +66,27 @@ public class FileNameAnalyzer extends AbstractAnalyzer implements Analyzer {
     public AnalysisPhase getAnalysisPhase() {
         return ANALYSIS_PHASE;
     }
+    /**
+     * <p>
+     * Returns the setting key to determine if the analyzer is enabled.</p>
+     *
+     * @return the key for the analyzer's enabled property
+     */
+    @Override
+    protected String getAnalyzerEnabledSettingKey() {
+        return Settings.KEYS.ANALYZER_FILE_NAME_ENABLED;
+    }
     //</editor-fold>
 
     /**
      * Python init files
      */
+    //CSOFF: WhitespaceAfter
     private static final NameFileFilter IGNORED_FILES = new NameFileFilter(new String[]{
         "__init__.py",
         "__init__.pyc",
         "__init__.pyo",});
+    //CSON: WhitespaceAfter
 
     /**
      * Collects information about the file name.
@@ -84,7 +97,7 @@ public class FileNameAnalyzer extends AbstractAnalyzer implements Analyzer {
      * file.
      */
     @Override
-    public void analyze(Dependency dependency, Engine engine) throws AnalysisException {
+    protected void analyzeDependency(Dependency dependency, Engine engine) throws AnalysisException {
 
         //strip any path information that may get added by ArchiveAnalyzer, etc.
         final File f = dependency.getActualFile();

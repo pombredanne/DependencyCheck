@@ -20,19 +20,17 @@ package org.owasp.dependencycheck.data.update.nvd;
 import java.io.File;
 import java.io.FileInputStream;
 import java.io.FileNotFoundException;
-import java.io.FileOutputStream;
 import java.io.IOException;
 import java.io.InputStream;
 import java.net.URL;
 import java.util.concurrent.Callable;
 import java.util.concurrent.ExecutorService;
 import java.util.concurrent.Future;
-import java.util.zip.GZIPInputStream;
-import org.apache.commons.io.FileUtils;
 import org.owasp.dependencycheck.data.nvdcve.CveDB;
 import org.owasp.dependencycheck.data.update.exception.UpdateException;
 import org.owasp.dependencycheck.utils.DownloadFailedException;
 import org.owasp.dependencycheck.utils.Downloader;
+import org.owasp.dependencycheck.utils.ExtractionUtil;
 import org.owasp.dependencycheck.utils.Settings;
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
@@ -48,6 +46,30 @@ public class DownloadTask implements Callable<Future<ProcessTask>> {
      * The Logger.
      */
     private static final Logger LOGGER = LoggerFactory.getLogger(DownloadTask.class);
+    /**
+     * The CVE DB to use when processing the files.
+     */
+    private final CveDB cveDB;
+    /**
+     * The processor service to pass the results of the download to.
+     */
+    private final ExecutorService processorService;
+    /**
+     * The NVD CVE Meta Data.
+     */
+    private NvdCveInfo nvdCveInfo;
+    /**
+     * A reference to the global settings object.
+     */
+    private final Settings settings;
+    /**
+     * a file.
+     */
+    private File first;
+    /**
+     * a file.
+     */
+    private File second;
 
     /**
      * Simple constructor for the callable download task.
@@ -55,8 +77,9 @@ public class DownloadTask implements Callable<Future<ProcessTask>> {
      * @param nvdCveInfo the NVD CVE info
      * @param processor the processor service to submit the downloaded files to
      * @param cveDB the CVE DB to use to store the vulnerability data
-     * @param settings a reference to the global settings object; this is necessary so that when the thread is started the
-     * dependencies have a correct reference to the global settings.
+     * @param settings a reference to the global settings object; this is
+     * necessary so that when the thread is started the dependencies have a
+     * correct reference to the global settings.
      * @throws UpdateException thrown if temporary files could not be created
      */
     public DownloadTask(NvdCveInfo nvdCveInfo, ExecutorService processor, CveDB cveDB, Settings settings) throws UpdateException {
@@ -78,22 +101,6 @@ public class DownloadTask implements Callable<Future<ProcessTask>> {
         this.second = file2;
 
     }
-    /**
-     * The CVE DB to use when processing the files.
-     */
-    private final CveDB cveDB;
-    /**
-     * The processor service to pass the results of the download to.
-     */
-    private final ExecutorService processorService;
-    /**
-     * The NVD CVE Meta Data.
-     */
-    private NvdCveInfo nvdCveInfo;
-    /**
-     * A reference to the global settings object.
-     */
-    private final Settings settings;
 
     /**
      * Get the value of nvdCveInfo.
@@ -112,10 +119,6 @@ public class DownloadTask implements Callable<Future<ProcessTask>> {
     public void setNvdCveInfo(NvdCveInfo nvdCveInfo) {
         this.nvdCveInfo = nvdCveInfo;
     }
-    /**
-     * a file.
-     */
-    private File first;
 
     /**
      * Get the value of first.
@@ -134,10 +137,6 @@ public class DownloadTask implements Callable<Future<ProcessTask>> {
     public void setFirst(File first) {
         this.first = first;
     }
-    /**
-     * a file.
-     */
-    private File second;
 
     /**
      * Get the value of second.
@@ -178,10 +177,10 @@ public class DownloadTask implements Callable<Future<ProcessTask>> {
                 return null;
             }
             if (url1.toExternalForm().endsWith(".xml.gz") && !isXml(first)) {
-                extractGzip(first);
+                ExtractionUtil.extractGzip(first);
             }
             if (url2.toExternalForm().endsWith(".xml.gz") && !isXml(second)) {
-                extractGzip(second);
+                ExtractionUtil.extractGzip(second);
             }
 
             LOGGER.info("Download Complete for NVD CVE - {}  ({} ms)", nvdCveInfo.getId(),
@@ -205,25 +204,13 @@ public class DownloadTask implements Callable<Future<ProcessTask>> {
      * Attempts to delete the files that were downloaded.
      */
     public void cleanup() {
-        boolean deleted = false;
-        try {
-            if (first != null && first.exists()) {
-                deleted = first.delete();
-            }
-        } finally {
-            if (first != null && (first.exists() || !deleted)) {
-                first.deleteOnExit();
-            }
+        if (first != null && first.exists() && first.delete()) {
+            LOGGER.debug("Failed to delete first temporary file {}", second.toString());
+            first.deleteOnExit();
         }
-        try {
-            deleted = false;
-            if (second != null && second.exists()) {
-                deleted = second.delete();
-            }
-        } finally {
-            if (second != null && (second.exists() || !deleted)) {
-                second.deleteOnExit();
-            }
+        if (second != null && second.exists() && !second.delete()) {
+            LOGGER.debug("Failed to delete second temporary file {}", second.toString());
+            second.deleteOnExit();
         }
     }
 
@@ -263,57 +250,6 @@ public class DownloadTask implements Callable<Future<ProcessTask>> {
                 } catch (IOException ex) {
                     LOGGER.debug("Error closing stream", ex);
                 }
-            }
-        }
-    }
-
-    /**
-     * Extracts the file contained in a gzip archive. The extracted file is placed in the exact same path as the file specified.
-     *
-     * @param file the archive file
-     * @throws FileNotFoundException thrown if the file does not exist
-     * @throws IOException thrown if there is an error extracting the file.
-     */
-    private void extractGzip(File file) throws FileNotFoundException, IOException {
-        final String originalPath = file.getPath();
-        final File gzip = new File(originalPath + ".gz");
-        if (gzip.isFile() && !gzip.delete()) {
-            gzip.deleteOnExit();
-        }
-        if (!file.renameTo(gzip)) {
-            throw new IOException("Unable to rename '" + file.getPath() + "'");
-        }
-        final File newfile = new File(originalPath);
-
-        final byte[] buffer = new byte[4096];
-
-        GZIPInputStream cin = null;
-        FileOutputStream out = null;
-        try {
-            cin = new GZIPInputStream(new FileInputStream(gzip));
-            out = new FileOutputStream(newfile);
-
-            int len;
-            while ((len = cin.read(buffer)) > 0) {
-                out.write(buffer, 0, len);
-            }
-        } finally {
-            if (cin != null) {
-                try {
-                    cin.close();
-                } catch (IOException ex) {
-                    LOGGER.trace("ignore", ex);
-                }
-            }
-            if (out != null) {
-                try {
-                    out.close();
-                } catch (IOException ex) {
-                    LOGGER.trace("ignore", ex);
-                }
-            }
-            if (gzip.isFile()) {
-                FileUtils.deleteQuietly(gzip);
             }
         }
     }

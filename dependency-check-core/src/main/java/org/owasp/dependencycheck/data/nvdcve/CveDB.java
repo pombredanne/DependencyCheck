@@ -87,10 +87,12 @@ public class CveDB {
             open();
             try {
                 final String databaseProductName = conn.getMetaData().getDatabaseProductName();
-                batchSupported = conn.getMetaData().supportsBatchUpdates();
                 LOGGER.debug("Database dialect: {}", databaseProductName);
                 final Locale dbDialect = new Locale(databaseProductName);
                 statementBundle = ResourceBundle.getBundle("data/dbStatements", dbDialect);
+                if ("mysql".equalsIgnoreCase(databaseProductName)) {
+                    batchSupported = false;
+                }
             } catch (SQLException se) {
                 LOGGER.warn("Problem loading database specific dialect!", se);
                 statementBundle = ResourceBundle.getBundle("data/dbStatements");
@@ -117,7 +119,7 @@ public class CveDB {
      * @throws DatabaseException thrown if there is an error opening the
      * database connection
      */
-    public final void open() throws DatabaseException {
+    public final synchronized void open() throws DatabaseException {
         if (!isOpen()) {
             conn = ConnectionFactory.getConnection();
         }
@@ -127,7 +129,7 @@ public class CveDB {
      * Closes the DB4O database. Close should be called on this object when it
      * is done being used.
      */
-    public void close() {
+    public synchronized void close() {
         if (conn != null) {
             try {
                 conn.close();
@@ -147,7 +149,7 @@ public class CveDB {
      *
      * @return whether the database connection is open or closed
      */
-    public boolean isOpen() {
+    public synchronized boolean isOpen() {
         return conn != null;
     }
 
@@ -156,7 +158,7 @@ public class CveDB {
      *
      * @throws SQLException thrown if a SQL Exception occurs
      */
-    public void commit() throws SQLException {
+    public synchronized void commit() throws SQLException {
         //temporary remove this as autocommit is on.
         //if (conn != null) {
         //    conn.commit();
@@ -200,7 +202,7 @@ public class CveDB {
      * analyzed
      * @return a set of vulnerable software
      */
-    public Set<VulnerableSoftware> getCPEs(String vendor, String product) {
+    public synchronized Set<VulnerableSoftware> getCPEs(String vendor, String product) {
         final Set<VulnerableSoftware> cpe = new HashSet<VulnerableSoftware>();
         ResultSet rs = null;
         PreparedStatement ps = null;
@@ -232,7 +234,7 @@ public class CveDB {
      * @throws DatabaseException thrown when there is an error retrieving the
      * data from the DB
      */
-    public Set<Pair<String, String>> getVendorProductList() throws DatabaseException {
+    public synchronized Set<Pair<String, String>> getVendorProductList() throws DatabaseException {
         final Set<Pair<String, String>> data = new HashSet<Pair<String, String>>();
         ResultSet rs = null;
         PreparedStatement ps = null;
@@ -257,7 +259,7 @@ public class CveDB {
      *
      * @return the properties from the database
      */
-    Properties getProperties() {
+    public synchronized Properties getProperties() {
         final Properties prop = new Properties();
         PreparedStatement ps = null;
         ResultSet rs = null;
@@ -283,7 +285,7 @@ public class CveDB {
      * @param key the property key
      * @param value the property value
      */
-    void saveProperty(String key, String value) {
+    public synchronized void saveProperty(String key, String value) {
         try {
             try {
                 final PreparedStatement mergeProperty = getConnection().prepareStatement(statementBundle.getString("MERGE_PROPERTY"));
@@ -326,7 +328,7 @@ public class CveDB {
      * @return a list of Vulnerabilities
      * @throws DatabaseException thrown if there is an exception retrieving data
      */
-    public List<Vulnerability> getVulnerabilities(String cpeStr) throws DatabaseException {
+    public synchronized List<Vulnerability> getVulnerabilities(String cpeStr) throws DatabaseException {
         final VulnerableSoftware cpe = new VulnerableSoftware();
         try {
             cpe.parseName(cpeStr);
@@ -387,7 +389,7 @@ public class CveDB {
      * @return a vulnerability object
      * @throws DatabaseException if an exception occurs
      */
-    public Vulnerability getVulnerability(String cve) throws DatabaseException {
+    public synchronized Vulnerability getVulnerability(String cve) throws DatabaseException {
         PreparedStatement psV = null;
         PreparedStatement psR = null;
         PreparedStatement psS = null;
@@ -460,7 +462,7 @@ public class CveDB {
      * @param vuln the vulnerability to add to the database
      * @throws DatabaseException is thrown if the database
      */
-    public void updateVulnerability(Vulnerability vuln) throws DatabaseException {
+    public synchronized void updateVulnerability(Vulnerability vuln) throws DatabaseException {
         PreparedStatement selectVulnerabilityId = null;
         PreparedStatement deleteVulnerability = null;
         PreparedStatement deleteReferences = null;
@@ -636,7 +638,7 @@ public class CveDB {
      *
      * @return <code>true</code> if data exists; otherwise <code>false</code>
      */
-    public boolean dataExists() {
+    public synchronized boolean dataExists() {
         Statement cs = null;
         ResultSet rs = null;
         try {
@@ -672,7 +674,7 @@ public class CveDB {
      * updates. This should be called after all updates have been completed to
      * ensure orphan entries are removed.
      */
-    public void cleanupDatabase() {
+    public synchronized void cleanupDatabase() {
         PreparedStatement ps = null;
         try {
             ps = getConnection().prepareStatement(statementBundle.getString("CLEANUP_ORPHANS"));
@@ -701,7 +703,7 @@ public class CveDB {
      * analyzed
      * @return true if the identified version is affected, otherwise false
      */
-    Entry<String, Boolean> getMatchingSoftware(Map<String, Boolean> vulnerableSoftware, String vendor, String product,
+    protected Entry<String, Boolean> getMatchingSoftware(Map<String, Boolean> vulnerableSoftware, String vendor, String product,
             DependencyVersion identifiedVersion) {
 
         final boolean isVersionTwoADifferentProduct = "apache".equals(vendor) && "struts".equals(product);
@@ -810,7 +812,7 @@ public class CveDB {
      *
      * Deletes unused dictionary entries from the database.
      */
-    public void deleteUnusedCpe() {
+    public synchronized void deleteUnusedCpe() {
         PreparedStatement ps = null;
         try {
             ps = getConnection().prepareStatement(statementBundle.getString("DELETE_UNUSED_DICT_CPE"));
@@ -832,7 +834,7 @@ public class CveDB {
      * @param vendor the CPE vendor
      * @param product the CPE product
      */
-    public void addCpe(String cpe, String vendor, String product) {
+    public synchronized void addCpe(String cpe, String vendor, String product) {
         PreparedStatement ps = null;
         try {
             ps = getConnection().prepareStatement(statementBundle.getString("ADD_DICT_CPE"));

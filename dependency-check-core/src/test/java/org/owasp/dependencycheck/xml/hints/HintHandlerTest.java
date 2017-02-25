@@ -32,11 +32,6 @@ import javax.xml.parsers.SAXParserFactory;
 import org.junit.Test;
 import static org.junit.Assert.*;
 import org.owasp.dependencycheck.BaseTest;
-import org.owasp.dependencycheck.xml.suppression.SuppressionErrorHandler;
-import org.owasp.dependencycheck.xml.suppression.SuppressionHandler;
-import org.owasp.dependencycheck.xml.suppression.SuppressionParser;
-import org.owasp.dependencycheck.xml.suppression.SuppressionRule;
-import org.xml.sax.Attributes;
 import org.xml.sax.InputSource;
 import org.xml.sax.SAXException;
 import org.xml.sax.SAXNotRecognizedException;
@@ -52,7 +47,7 @@ public class HintHandlerTest extends BaseTest {
     @Test
     public void testHandler() throws ParserConfigurationException, SAXNotRecognizedException, SAXNotSupportedException, SAXException, FileNotFoundException, UnsupportedEncodingException, IOException {
         File file = BaseTest.getResourceAsFile(this, "hints.xml");
-        File schema = BaseTest.getResourceAsFile(this, "schema/dependency-hint.1.0.xsd");
+        File schema = BaseTest.getResourceAsFile(this, "schema/dependency-hint.1.1.xsd");
         HintHandler handler = new HintHandler();
 
         SAXParserFactory factory = SAXParserFactory.newInstance();

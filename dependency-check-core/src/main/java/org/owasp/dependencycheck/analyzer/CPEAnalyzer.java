@@ -25,6 +25,8 @@ import java.util.Collections;
 import java.util.List;
 import java.util.Set;
 import java.util.StringTokenizer;
+import java.util.concurrent.TimeUnit;
+import org.apache.commons.lang3.builder.CompareToBuilder;
 import org.apache.lucene.document.Document;
 import org.apache.lucene.index.CorruptIndexException;
 import org.apache.lucene.queryparser.classic.ParseException;
@@ -48,6 +50,7 @@ import org.owasp.dependencycheck.dependency.VulnerableSoftware;
 import org.owasp.dependencycheck.exception.InitializationException;
 import org.owasp.dependencycheck.utils.DependencyVersion;
 import org.owasp.dependencycheck.utils.DependencyVersionUtil;
+import org.owasp.dependencycheck.utils.Settings;
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
 
@@ -58,7 +61,7 @@ import org.slf4j.LoggerFactory;
  *
  * @author Jeremy Long
  */
-public class CPEAnalyzer implements Analyzer {
+public class CPEAnalyzer extends AbstractAnalyzer {
 
     /**
      * The Logger.
@@ -67,26 +70,26 @@ public class CPEAnalyzer implements Analyzer {
     /**
      * The maximum number of query results to return.
      */
-    static final int MAX_QUERY_RESULTS = 25;
+    private static final int MAX_QUERY_RESULTS = 25;
     /**
      * The weighting boost to give terms when constructing the Lucene query.
      */
-    static final String WEIGHTING_BOOST = "^5";
+    private static final String WEIGHTING_BOOST = "^5";
     /**
      * A string representation of a regular expression defining characters
      * utilized within the CPE Names.
      */
-    static final String CLEANSE_CHARACTER_RX = "[^A-Za-z0-9 ._-]";
+    private static final String CLEANSE_CHARACTER_RX = "[^A-Za-z0-9 ._-]";
     /**
      * A string representation of a regular expression used to remove all but
      * alpha characters.
      */
-    static final String CLEANSE_NONALPHA_RX = "[^A-Za-z]*";
+    private static final String CLEANSE_NONALPHA_RX = "[^A-Za-z]*";
     /**
      * The additional size to add to a new StringBuilder to account for extra
      * data that will be written into the string.
      */
-    static final int STRING_BUILDER_BUFFER = 20;
+    private static final int STRING_BUILDER_BUFFER = 20;
     /**
      * The CPE in memory index.
      */
@@ -122,13 +125,23 @@ public class CPEAnalyzer implements Analyzer {
     }
 
     /**
+     * The default is to support parallel processing.
+     *
+     * @return false
+     */
+    @Override
+    public boolean supportsParallelProcessing() {
+        return false;
+    }
+
+    /**
      * Creates the CPE Lucene Index.
      *
      * @throws InitializationException is thrown if there is an issue opening
      * the index.
      */
     @Override
-    public void initialize() throws InitializationException {
+    public void initializeAnalyzer() throws InitializationException {
         try {
             this.open();
         } catch (IOException ex) {
@@ -154,10 +167,10 @@ public class CPEAnalyzer implements Analyzer {
             cve.open();
             cpe = CpeMemoryIndex.getInstance();
             try {
-                LOGGER.info("Creating the CPE Index");
                 final long creationStart = System.currentTimeMillis();
                 cpe.open(cve);
-                LOGGER.info("CPE Index Created ({} ms)", System.currentTimeMillis() - creationStart);
+                final long creationSeconds = TimeUnit.MILLISECONDS.toSeconds(System.currentTimeMillis() - creationStart);
+                LOGGER.info("Created CPE Index ({} seconds)", creationSeconds);
             } catch (IndexException ex) {
                 LOGGER.debug("IndexException", ex);
                 throw new DatabaseException(ex);
@@ -169,7 +182,7 @@ public class CPEAnalyzer implements Analyzer {
      * Closes the data sources.
      */
     @Override
-    public void close() {
+    public void closeAnalyzer() {
         if (cpe != null) {
             cpe.close();
             cpe = null;
@@ -513,7 +526,7 @@ public class CPEAnalyzer implements Analyzer {
      * dependency.
      */
     @Override
-    public synchronized void analyze(Dependency dependency, Engine engine) throws AnalysisException {
+    protected synchronized void analyzeDependency(Dependency dependency, Engine engine) throws AnalysisException {
         try {
             determineCPE(dependency);
         } catch (CorruptIndexException ex) {
@@ -586,11 +599,10 @@ public class CPEAnalyzer implements Analyzer {
                         }
                     }
                 }
-                if (bestGuessConf == null || bestGuessConf.compareTo(conf) > 0) {
-                    if (bestGuess.getVersionParts().size() < evVer.getVersionParts().size()) {
-                        bestGuess = evVer;
-                        bestGuessConf = conf;
-                    }
+                if ((bestGuessConf == null || bestGuessConf.compareTo(conf) > 0)
+                        && bestGuess.getVersionParts().size() < evVer.getVersionParts().size()) {
+                    bestGuess = evVer;
+                    bestGuessConf = conf;
                 }
             }
         }
@@ -600,10 +612,12 @@ public class CPEAnalyzer implements Analyzer {
             final String cpeUrlName = String.format("cpe:/a:%s:%s", vendor, product);
             url = String.format(NVD_SEARCH_URL, URLEncoder.encode(cpeUrlName, "UTF-8"));
         }
-        if (bestGuessConf == null) {
+        if (bestGuessConf
+                == null) {
             bestGuessConf = Confidence.LOW;
         }
         final IdentifierMatch match = new IdentifierMatch("cpe", cpeName, url, IdentifierConfidence.BEST_GUESS, bestGuessConf);
+
         collected.add(match);
 
         Collections.sort(collected);
@@ -624,6 +638,18 @@ public class CPEAnalyzer implements Analyzer {
             }
         }
         return identifierAdded;
+    }
+
+    /**
+     * <p>
+     * Returns the setting key to determine if the analyzer is enabled.</p>
+     *
+     * @return the key for the analyzer's enabled property
+     */
+    @Override
+    protected String getAnalyzerEnabledSettingKey() {
+        return Settings.KEYS.ANALYZER_CPE_ENABLED;
+
     }
 
     /**
@@ -654,6 +680,19 @@ public class CPEAnalyzer implements Analyzer {
     private static class IdentifierMatch implements Comparable<IdentifierMatch> {
 
         /**
+         * The confidence in the evidence used to identify this match.
+         */
+        private Confidence evidenceConfidence;
+        /**
+         * The confidence whether this is an exact match, or a best guess.
+         */
+        private IdentifierConfidence confidence;
+        /**
+         * The CPE identifier.
+         */
+        private Identifier identifier;
+
+        /**
          * Constructs an IdentifierMatch.
          *
          * @param type the type of identifier (such as CPE)
@@ -669,12 +708,8 @@ public class CPEAnalyzer implements Analyzer {
             this.confidence = identifierConfidence;
             this.evidenceConfidence = evidenceConfidence;
         }
-        //<editor-fold defaultstate="collapsed" desc="Property implementations: evidenceConfidence, confidence, identifier">
-        /**
-         * The confidence in the evidence used to identify this match.
-         */
-        private Confidence evidenceConfidence;
 
+        //<editor-fold defaultstate="collapsed" desc="Property implementations: evidenceConfidence, confidence, identifier">
         /**
          * Get the value of evidenceConfidence
          *
@@ -692,10 +727,6 @@ public class CPEAnalyzer implements Analyzer {
         public void setEvidenceConfidence(Confidence evidenceConfidence) {
             this.evidenceConfidence = evidenceConfidence;
         }
-        /**
-         * The confidence whether this is an exact match, or a best guess.
-         */
-        private IdentifierConfidence confidence;
 
         /**
          * Get the value of confidence.
@@ -714,10 +745,6 @@ public class CPEAnalyzer implements Analyzer {
         public void setConfidence(IdentifierConfidence confidence) {
             this.confidence = confidence;
         }
-        /**
-         * The CPE identifier.
-         */
-        private Identifier identifier;
 
         /**
          * Get the value of identifier.
@@ -785,10 +812,7 @@ public class CPEAnalyzer implements Analyzer {
             if (this.confidence != other.confidence) {
                 return false;
             }
-            if (this.identifier != other.identifier && (this.identifier == null || !this.identifier.equals(other.identifier))) {
-                return false;
-            }
-            return true;
+            return !(this.identifier != other.identifier && (this.identifier == null || !this.identifier.equals(other.identifier)));
         }
         //</editor-fold>
 
@@ -801,14 +825,11 @@ public class CPEAnalyzer implements Analyzer {
          */
         @Override
         public int compareTo(IdentifierMatch o) {
-            int conf = this.confidence.compareTo(o.confidence);
-            if (conf == 0) {
-                conf = this.evidenceConfidence.compareTo(o.evidenceConfidence);
-                if (conf == 0) {
-                    conf = identifier.compareTo(o.identifier);
-                }
-            }
-            return conf;
+            return new CompareToBuilder()
+                    .append(confidence, o.confidence)
+                    .append(evidenceConfidence, o.evidenceConfidence)
+                    .append(identifier, o.identifier)
+                    .toComparison();
         }
     }
 }

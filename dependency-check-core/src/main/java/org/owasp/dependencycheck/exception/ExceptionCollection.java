@@ -25,9 +25,22 @@ import java.util.List;
 /**
  * A collection of several exceptions.
  *
- * @author Jeremy Lomg
+ * @author Jeremy Long
  */
 public class ExceptionCollection extends Exception {
+    /**
+     * The serial version uid.
+     */
+    private static final long serialVersionUID = 1L;
+    /**
+     * A collection of exceptions.
+     */
+    private List<Throwable> exceptions;
+    /**
+     * Flag indicating if a fatal exception occurred that would prevent the
+     * attempt at completing the analysis even if exceptions occurred.
+     */
+    private boolean fatal = false;
 
     /**
      * Instantiates a new exception collection.
@@ -54,7 +67,7 @@ public class ExceptionCollection extends Exception {
      * Instantiates a new exception collection.
      *
      * @param exceptions a list of exceptions
-     * @param fatal indicates if the exception that occurred is fatal - meaning
+     * @param fatal indicates if any of the exceptions that occurred is fatal - meaning
      * that no analysis was performed.
      */
     public ExceptionCollection(List<Throwable> exceptions, boolean fatal) {
@@ -68,7 +81,7 @@ public class ExceptionCollection extends Exception {
      *
      * @param msg the exception message
      * @param exceptions a list of exceptions
-     * @param fatal indicates if the exception that occurred is fatal - meaning
+     * @param fatal indicates if any of the exceptions that occurred is fatal - meaning
      * that no analysis was performed.
      */
     public ExceptionCollection(String msg, List<Throwable> exceptions, boolean fatal) {
@@ -99,7 +112,7 @@ public class ExceptionCollection extends Exception {
      */
     public ExceptionCollection(String msg, Throwable exception) {
         super(msg);
-        this.exceptions = new ArrayList<Throwable>();
+        this.exceptions = new ArrayList<>();
         this.exceptions.add(exception);
         this.fatal = false;
     }
@@ -109,17 +122,8 @@ public class ExceptionCollection extends Exception {
      */
     public ExceptionCollection() {
         super();
-        this.exceptions = new ArrayList<Throwable>();
+        this.exceptions = new ArrayList<>();
     }
-    /**
-     * The serial version uid.
-     */
-    private static final long serialVersionUID = 1L;
-
-    /**
-     * A collection of exceptions.
-     */
-    private List<Throwable> exceptions;
 
     /**
      * Get the value of exceptions.
@@ -151,12 +155,6 @@ public class ExceptionCollection extends Exception {
     }
 
     /**
-     * Flag indicating if a fatal exception occurred that would prevent the
-     * attempt at completing the analysis even if exceptions occurred.
-     */
-    private boolean fatal = false;
-
-    /**
      * Get the value of fatal.
      *
      * @return the value of fatal
@@ -181,7 +179,7 @@ public class ExceptionCollection extends Exception {
      */
     @Override
     public void printStackTrace(PrintWriter s) {
-        s.println("Multiple Exceptions Occured");
+        s.println("Multiple Exceptions Occurred");
         super.printStackTrace(s);
         for (Throwable t : this.exceptions) {
             s.println("Next Exception:");
@@ -212,10 +210,10 @@ public class ExceptionCollection extends Exception {
      */
     @Override
     public String getMessage() {
-        StringBuilder sb = new StringBuilder();
+        final StringBuilder sb = new StringBuilder();
         final String msg = super.getMessage();
         if (msg == null || msg.isEmpty()) {
-            sb.append("One or more exceptions occured during analysis:");
+            sb.append("One or more exceptions occurred during analysis:");
         } else {
             sb.append(msg);
         }

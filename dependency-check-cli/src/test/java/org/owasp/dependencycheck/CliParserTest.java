@@ -17,17 +17,14 @@
  */
 package org.owasp.dependencycheck;
 
-import org.owasp.dependencycheck.CliParser;
 import java.io.ByteArrayOutputStream;
 import java.io.File;
 import java.io.FileNotFoundException;
 import java.io.IOException;
 import java.io.PrintStream;
 import org.apache.commons.cli.ParseException;
-import org.junit.After;
 import org.junit.AfterClass;
 import org.junit.Assert;
-import org.junit.Before;
 import org.junit.BeforeClass;
 import org.junit.Test;
 import org.owasp.dependencycheck.utils.Settings;
@@ -46,14 +43,6 @@ public class CliParserTest {
     @AfterClass
     public static void tearDownClass() throws Exception {
         Settings.cleanup(true);
-    }
-
-    @Before
-    public void setUp() throws Exception {
-    }
-
-    @After
-    public void tearDown() throws Exception {
     }
 
     /**
@@ -113,6 +102,63 @@ public class CliParserTest {
         Assert.assertFalse(instance.isGetHelp());
         Assert.assertFalse(instance.isRunScan());
 
+    }
+
+    /**
+     * Test of parse method with failOnCVSS without an argument
+     *
+     * @throws Exception thrown when an exception occurs.
+     */
+    @Test
+    public void testParse_failOnCVSSNoArg() throws Exception {
+
+        String[] args = {"--failOnCVSS"};
+
+        CliParser instance = new CliParser();
+        try {
+            instance.parse(args);
+        } catch (ParseException ex) {
+            Assert.assertTrue(ex.getMessage().contains("Missing argument"));
+        }
+        Assert.assertFalse(instance.isGetVersion());
+        Assert.assertFalse(instance.isGetHelp());
+        Assert.assertFalse(instance.isRunScan());
+    }
+
+    /**
+     * Test of parse method with failOnCVSS invalid argument. It should default to 11
+     *
+     * @throws Exception thrown when an exception occurs.
+     */
+    @Test
+    public void testParse_failOnCVSSInvalidArgument() throws Exception {
+
+        String[] args = {"--failOnCVSS","bad"};
+
+        CliParser instance = new CliParser();
+        instance.parse(args);
+        Assert.assertEquals("Default should be 11", 11, instance.getFailOnCVSS());
+        Assert.assertFalse(instance.isGetVersion());
+        Assert.assertFalse(instance.isGetHelp());
+        Assert.assertFalse(instance.isRunScan());
+    }
+
+    /**
+     * Test of parse method with failOnCVSS invalid argument. It should default to 11
+     *
+     * @throws Exception thrown when an exception occurs.
+     */
+    @Test
+    public void testParse_failOnCVSSValidArgument() throws Exception {
+
+        String[] args = {"--failOnCVSS","6"};
+
+        CliParser instance = new CliParser();
+        instance.parse(args);
+        Assert.assertEquals(6, instance.getFailOnCVSS());
+        Assert.assertFalse(instance.isGetVersion());
+        Assert.assertFalse(instance.isGetHelp());
+        Assert.assertFalse(instance.isRunScan());
     }
 
     /**
@@ -196,7 +242,7 @@ public class CliParserTest {
      */
     @Test
     public void testParse_scan_withFileExists() throws Exception {
-        File path = new File(this.getClass().getClassLoader().getResource("checkSumTest.file").getPath());
+        File path = new File(this.getClass().getClassLoader().getResource("checkSumTest.file").toURI().getPath());
         String[] args = {"-scan", path.getCanonicalPath(), "-out", "./", "-app", "test"};
 
         CliParser instance = new CliParser();

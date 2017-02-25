@@ -1,4 +1,4 @@
-[![Build Status](https://travis-ci.org/jeremylong/DependencyCheck.svg?branch=master)](https://travis-ci.org/jeremylong/DependencyCheck) [![Apache 2.0 License](https://img.shields.io/badge/license-Apache%202-blue.svg)](https://www.apache.org/licenses/LICENSE-2.0.txt) [![Coverity Scan Build Status](https://scan.coverity.com/projects/1654/badge.svg)](https://scan.coverity.com/projects/dependencycheck)
+[![Build Status](https://travis-ci.org/jeremylong/DependencyCheck.svg?branch=master)](https://travis-ci.org/jeremylong/DependencyCheck) [![Coverity Scan Build Status](https://scan.coverity.com/projects/1654/badge.svg)](https://scan.coverity.com/projects/dependencycheck) [![Codacy Badge](https://api.codacy.com/project/badge/Grade/6b6021d481dc41a888c5da0d9ecf9494)](https://www.codacy.com/app/jeremylong/DependencyCheck?utm_source=github.com&amp;utm_medium=referral&amp;utm_content=jeremylong/DependencyCheck&amp;utm_campaign=Badge_Grade) [![Apache 2.0 License](https://img.shields.io/badge/license-Apache%202-blue.svg)](https://www.apache.org/licenses/LICENSE-2.0.txt)
 
 Dependency-Check
 ================
@@ -96,6 +96,37 @@ On Windows
 ```
 
 Then load the resulting 'DependencyCheck-Report.html' into your favorite browser.
+
+### Docker
+
+In the following example it is assumed that the source to be checked is in the actual directory. A persistent data directory and a persistent report directory is used so that the container can be destroyed after running it to make sure that you use the newst version, always.
+```
+# After the first run, feel free to change the owner of the directories to the owner of the creted files and the permissions to 744
+DATA_DIRECTORY=$HOME/OWASP-Dependency-Check/data
+REPORT_DIRECTORY=/$HOME/OWASP-Dependency-Check/reports
+
+if [ ! -d $DATA_DIRECTORY ]; then
+	echo "Initially creating persistent directories"
+        mkdir -p $DATA_DIRECTORY
+        chmod -R 777 $DATA_DIRECTORY
+    
+        mkdir -p $REPORT_DIRECTORY
+        chmod -R 777 $REPORT_DIRECTORY
+fi
+
+docker pull owasp/dependency-check # Make sure it is the actual version
+
+docker run --rm \
+        --volume $(pwd):/src \
+        --volume $DATA_DIRECTORY:/usr/share/dependency-check/data \
+        --volume $REPORT_DIRECTORY:/report \
+        --name dependency-check \
+        dc \
+        --suppression "/src/security/dependency-check-suppression.xml"\
+        --format "ALL" \
+        --project "My OWASP Dependency Check Projekt" \
+```
+
 
 Mailing List
 ------------

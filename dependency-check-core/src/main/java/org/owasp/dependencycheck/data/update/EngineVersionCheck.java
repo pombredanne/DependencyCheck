@@ -37,7 +37,7 @@ import org.slf4j.LoggerFactory;
 
 /**
  * Checks the gh-pages dependency-check site to determine the current released
- * version number. If the released version number is greater then the running
+ * version number. If the released version number is greater than the running
  * version number a warning is printed recommending that an upgrade be
  * performed.
  *
@@ -99,7 +99,16 @@ public class EngineVersionCheck implements CachedWebDataSource {
     @Override
     public void update() throws UpdateException {
         try {
-            if (Settings.getBoolean(Settings.KEYS.AUTO_UPDATE)) {
+            final boolean autoupdate = Settings.getBoolean(Settings.KEYS.AUTO_UPDATE, true);
+            final boolean enabled = Settings.getBoolean(Settings.KEYS.UPDATE_VERSION_CHECK_ENABLED, true);
+            final String original = Settings.getString(Settings.KEYS.CVE_ORIGINAL_MODIFIED_20_URL);
+            final String current = Settings.getString(Settings.KEYS.CVE_MODIFIED_20_URL);
+            /**
+             * Only update if auto-update is enabled, the engine check is
+             * enabled, and the NVD CVE URLs have not been modified (i.e. the
+             * user has not configured them to point to an internal source).
+             */
+            if (enabled && autoupdate && original != null && original.equals(current)) {
                 openDatabase();
                 LOGGER.debug("Begin Engine Version Check");
                 final DatabaseProperties properties = cveDB.getDatabaseProperties();
@@ -118,7 +127,7 @@ public class EngineVersionCheck implements CachedWebDataSource {
             }
         } catch (DatabaseException ex) {
             LOGGER.debug("Database Exception opening databases to retrieve properties", ex);
-            throw new UpdateException("Error occured updating database properties.");
+            throw new UpdateException("Error occurred updating database properties.");
         } catch (InvalidSettingException ex) {
             LOGGER.debug("Unable to determine if autoupdate is enabled", ex);
         } finally {

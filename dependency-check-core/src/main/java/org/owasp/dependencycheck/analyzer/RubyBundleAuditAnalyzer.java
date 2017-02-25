@@ -115,7 +115,15 @@ public class RubyBundleAuditAnalyzer extends AbstractFileTypeAnalyzer {
         }
         final List<String> args = new ArrayList<String>();
         final String bundleAuditPath = Settings.getString(Settings.KEYS.ANALYZER_BUNDLE_AUDIT_PATH);
-        args.add(null == bundleAuditPath ? "bundle-audit" : bundleAuditPath);
+        File bundleAudit = null;
+        if (bundleAuditPath != null) {
+            bundleAudit = new File(bundleAuditPath);
+            if (!bundleAudit.isFile()) {
+                LOGGER.warn("Supplied `bundleAudit` path is incorrect: " + bundleAuditPath);
+                bundleAudit = null;
+            }
+        }
+        args.add(bundleAudit != null && bundleAudit.isFile() ? bundleAudit.getAbsolutePath() : "bundle-audit");
         args.add("check");
         args.add("--verbose");
         final ProcessBuilder builder = new ProcessBuilder(args);
@@ -244,7 +252,7 @@ public class RubyBundleAuditAnalyzer extends AbstractFileTypeAnalyzer {
     }
 
     /**
-     * If {@link #analyzeFileType(Dependency, Engine)} is called, then we have
+     * If {@link #analyzeDependency(Dependency, Engine)} is called, then we have
      * successfully initialized, and it will be necessary to disable
      * {@link RubyGemspecAnalyzer}.
      */
@@ -258,7 +266,7 @@ public class RubyBundleAuditAnalyzer extends AbstractFileTypeAnalyzer {
      * @throws AnalysisException thrown if there is an analysis exception.
      */
     @Override
-    protected void analyzeFileType(Dependency dependency, Engine engine)
+    protected void analyzeDependency(Dependency dependency, Engine engine)
             throws AnalysisException {
         if (needToDisableGemspecAnalyzer) {
             boolean failed = true;
@@ -280,10 +288,15 @@ public class RubyBundleAuditAnalyzer extends AbstractFileTypeAnalyzer {
         }
         final File parentFile = dependency.getActualFile().getParentFile();
         final Process process = launchBundleAudit(parentFile);
+        final int exitValue;
         try {
-            process.waitFor();
+            exitValue = process.waitFor();
         } catch (InterruptedException ie) {
             throw new AnalysisException("bundle-audit process interrupted", ie);
+        }
+        if (exitValue < 0 || exitValue > 1) {
+            final String msg = String.format("Unexpected exit code from bundle-audit process; exit code: %s", exitValue);
+            throw new AnalysisException(msg);
         }
         BufferedReader rdr = null;
         BufferedReader errReader = null;
@@ -360,10 +373,8 @@ public class RubyBundleAuditAnalyzer extends AbstractFileTypeAnalyzer {
                             + "Title link may not work. CPE below is guessed. CVSS score is estimated (-1.0 "
                             + " indicates unknown). See link below for full details. *** ");
                 }
-            } else if (appendToDescription) {
-                if (null != vulnerability) {
-                    vulnerability.setDescription(vulnerability.getDescription() + nextLine + "\n");
-                }
+            } else if (appendToDescription && null != vulnerability) {
+                vulnerability.setDescription(vulnerability.getDescription() + nextLine + "\n");
             }
         }
     }

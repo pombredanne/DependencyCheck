@@ -26,7 +26,6 @@ import java.io.File;
 import java.util.Iterator;
 import java.util.List;
 import java.util.Set;
-import java.util.logging.Level;
 
 import org.junit.After;
 import org.junit.Assume;
@@ -45,6 +44,7 @@ import org.owasp.dependencycheck.exception.ExceptionCollection;
 import org.owasp.dependencycheck.utils.Settings;
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
+import static org.junit.Assert.fail;
 
 /**
  * Unit tests for {@link RubyBundleAuditAnalyzer}.
@@ -58,7 +58,7 @@ public class RubyBundleAuditAnalyzerTest extends BaseDBTestCase {
     /**
      * The analyzer to test.
      */
-    RubyBundleAuditAnalyzer analyzer;
+    private RubyBundleAuditAnalyzer analyzer;
 
     /**
      * Correctly setup the analyzer for testing.
@@ -188,7 +188,7 @@ public class RubyBundleAuditAnalyzerTest extends BaseDBTestCase {
             engine.analyzeDependencies();
         } catch (NullPointerException ex) {
             LOGGER.error("NPE", ex);
-            throw ex;
+            fail(ex.getMessage());
         } catch (ExceptionCollection ex) {
             Assume.assumeNoException("Exception setting up RubyBundleAuditAnalyzer; bundle audit may not be installed, or property \"analyzer.bundle.audit.path\" may not be set.", ex);
         }

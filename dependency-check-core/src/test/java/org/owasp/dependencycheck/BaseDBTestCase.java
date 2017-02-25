@@ -25,7 +25,6 @@ import java.io.FileOutputStream;
 import java.util.zip.ZipEntry;
 import java.util.zip.ZipInputStream;
 import org.junit.Before;
-import org.owasp.dependencycheck.BaseTest;
 import org.owasp.dependencycheck.utils.Settings;
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
@@ -54,10 +53,10 @@ public abstract class BaseDBTestCase extends BaseTest {
             f.delete();
         }
 
-        java.io.File dataPath = Settings.getDataDirectory();
+        File dataPath = Settings.getDataDirectory();
         String fileName = Settings.getString(Settings.KEYS.DB_FILE_NAME);
         LOGGER.trace("DB file name {}", fileName);
-        java.io.File dataFile = new File(dataPath, fileName);
+        File dataFile = new File(dataPath, fileName);
         LOGGER.trace("Ensuring {} exists", dataFile.toString());
         if (!dataPath.exists() || !dataFile.exists()) {
             LOGGER.trace("Extracting database to {}", dataPath.toString());
@@ -65,7 +64,7 @@ public abstract class BaseDBTestCase extends BaseTest {
             FileInputStream fis = null;
             ZipInputStream zin = null;
             try {
-                File path = new File(BaseDBTestCase.class.getClassLoader().getResource("data.zip").getPath());
+                File path = new File(BaseDBTestCase.class.getClassLoader().getResource("data.zip").toURI().getPath());
                 fis = new FileInputStream(path);
                 zin = new ZipInputStream(new BufferedInputStream(fis));
                 ZipEntry entry;

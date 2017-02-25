@@ -25,6 +25,7 @@ import org.apache.maven.plugins.annotations.LifecyclePhase;
 import org.apache.maven.plugins.annotations.Mojo;
 import org.apache.maven.plugins.annotations.Parameter;
 import org.apache.maven.plugins.annotations.ResolutionScope;
+import org.owasp.dependencycheck.Engine;
 import org.owasp.dependencycheck.data.nvdcve.DatabaseException;
 import org.owasp.dependencycheck.exception.ExceptionCollection;
 import org.owasp.dependencycheck.exception.ReportException;
@@ -44,6 +45,13 @@ import org.owasp.dependencycheck.utils.Settings;
         requiresOnline = true
 )
 public class CheckMojo extends BaseDependencyCheckMojo {
+
+    /**
+     * The name of the report in the site.
+     */
+    @SuppressWarnings("CanBeFinal")
+    @Parameter(property = "name", defaultValue = "dependency-check", required = true)
+    private String name = "dependency-check";
 
     /**
      * Returns whether or not a the report can be generated.
@@ -74,14 +82,14 @@ public class CheckMojo extends BaseDependencyCheckMojo {
      */
     @Override
     public void runCheck() throws MojoExecutionException, MojoFailureException {
-        MavenEngine engine = null;
+        Engine engine = null;
         try {
             engine = initializeEngine();
         } catch (DatabaseException ex) {
             if (getLog().isDebugEnabled()) {
                 getLog().debug("Database connection error", ex);
             }
-            final String msg = "An exception occured connecting to the local database. Please see the log file for more details.";
+            final String msg = "An exception occurred connecting to the local database. Please see the log file for more details.";
             if (this.isFailOnError()) {
                 throw new MojoExecutionException(msg, ex);
             }
@@ -96,7 +104,7 @@ public class CheckMojo extends BaseDependencyCheckMojo {
                     engine.analyzeDependencies();
                 } catch (ExceptionCollection ex) {
                     if (this.isFailOnError() && ex.isFatal()) {
-                        throw new MojoExecutionException("One or more exceptions occured during analysis", ex);
+                        throw new MojoExecutionException("One or more exceptions occurred during analysis", ex);
                     }
                     exCol = ex;
                 }
@@ -112,11 +120,11 @@ public class CheckMojo extends BaseDependencyCheckMojo {
                             }
                         }
                     }
-                    writeDataFile(getProject(), null, engine.getDependencies());
+                    //writeDataFile(getProject(), null, engine.getDependencies());
                     showSummary(getProject(), engine.getDependencies());
                     checkForFailure(engine.getDependencies());
                     if (exCol != null && this.isFailOnError()) {
-                        throw new MojoExecutionException("One or more exceptions occured during dependency-check analysis", exCol);
+                        throw new MojoExecutionException("One or more exceptions occurred during dependency-check analysis", exCol);
                     }
                 }
             }
@@ -124,13 +132,6 @@ public class CheckMojo extends BaseDependencyCheckMojo {
         }
         Settings.cleanup();
     }
-
-    /**
-     * The name of the report in the site.
-     */
-    @SuppressWarnings("CanBeFinal")
-    @Parameter(property = "name", defaultValue = "dependency-check", required = true)
-    private String name = "dependency-check";
 
     /**
      * Returns the report name.
