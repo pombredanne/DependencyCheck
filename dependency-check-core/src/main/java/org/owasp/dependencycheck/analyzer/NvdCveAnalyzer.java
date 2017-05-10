@@ -60,8 +60,7 @@ public class NvdCveAnalyzer extends AbstractAnalyzer {
      * loaded
      */
     public void open() throws SQLException, IOException, DatabaseException, ClassNotFoundException {
-        cveDB = new CveDB();
-        cveDB.open();
+        cveDB = CveDB.getInstance();
     }
 
     /**
@@ -80,19 +79,6 @@ public class NvdCveAnalyzer extends AbstractAnalyzer {
      */
     public boolean isOpen() {
         return cveDB != null;
-    }
-
-    /**
-     * Ensures that the CVE Database is closed.
-     *
-     * @throws Throwable an exception raised by this method
-     */
-    @Override
-    protected void finalize() throws Throwable {
-        super.finalize();
-        if (isOpen()) {
-            close();
-        }
     }
 
     /**

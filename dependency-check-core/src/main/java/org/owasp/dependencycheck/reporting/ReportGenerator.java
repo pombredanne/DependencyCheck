@@ -17,17 +17,16 @@
  */
 package org.owasp.dependencycheck.reporting;
 
-import java.io.File;
-import java.io.FileInputStream;
-import java.io.FileNotFoundException;
-import java.io.FileOutputStream;
-import java.io.IOException;
-import java.io.InputStream;
-import java.io.InputStreamReader;
-import java.io.OutputStream;
-import java.io.OutputStreamWriter;
-import java.io.UnsupportedEncodingException;
+import java.io.*;
 import java.util.List;
+
+import com.google.gson.JsonSyntaxException;
+import com.google.gson.stream.JsonReader;
+import com.google.gson.stream.JsonToken;
+import static com.google.gson.stream.JsonToken.*;
+import com.google.gson.stream.JsonWriter;
+import java.math.BigDecimal;
+import java.nio.charset.StandardCharsets;
 import org.apache.velocity.VelocityContext;
 import org.apache.velocity.app.VelocityEngine;
 import org.apache.velocity.context.Context;
@@ -78,7 +77,11 @@ public class ReportGenerator {
         /**
          * Generate HTML Vulnerability report.
          */
-        VULN
+        VULN,
+        /**
+         * Generate JSON report.
+         */
+        JSON
     }
     /**
      * The Velocity Engine.
@@ -126,6 +129,27 @@ public class ReportGenerator {
     }
 
     /**
+     * Constructs a new ReportGenerator.
+     *
+     * @param applicationName the application name being analyzed
+     * @param groupID the group id of the project being analyzed
+     * @param artifactID the application id of the project being analyzed
+     * @param version the application version of the project being analyzed
+     * @param dependencies the list of dependencies
+     * @param analyzers the list of analyzers used
+     * @param properties the database properties (containing timestamps of the
+     * NVD CVE data)
+     */
+    public ReportGenerator(String applicationName, String groupID, String artifactID, String version,
+            List<Dependency> dependencies, List<Analyzer> analyzers, DatabaseProperties properties) {
+
+        this(applicationName, dependencies, analyzers, properties);
+        context.put("applicationVersion", version);
+        context.put("artifactID", artifactID);
+        context.put("groupID", groupID);
+    }
+
+    /**
      * Creates a new Velocity Engine.
      *
      * @return a velocity engine
@@ -164,6 +188,9 @@ public class ReportGenerator {
         if (format == Format.VULN || format == Format.ALL) {
             generateReport("VulnerabilityReport", outputStream);
         }
+        if (format == Format.JSON || format == Format.ALL) {
+            generateReport("JsonReport", outputStream);
+        }
     }
 
     /**
@@ -178,11 +205,100 @@ public class ReportGenerator {
         if (format == Format.XML || format == Format.ALL) {
             generateReport("XmlReport", outputDir + File.separator + "dependency-check-report.xml");
         }
+        if (format == Format.JSON || format == Format.ALL) {
+            generateReport("JsonReport", outputDir + File.separator + "dependency-check-report.json");
+            pretifyJson(outputDir + File.separator + "dependency-check-report.json");
+        }
         if (format == Format.HTML || format == Format.ALL) {
             generateReport("HtmlReport", outputDir + File.separator + "dependency-check-report.html");
         }
         if (format == Format.VULN || format == Format.ALL) {
             generateReport("VulnerabilityReport", outputDir + File.separator + "dependency-check-vulnerability.html");
+        }
+    }
+
+    /**
+     * Reformats the given JSON file.
+     *
+     * @param pathToJson the path to the JSON file to be reformatted
+     * @throws JsonSyntaxException thrown if the given JSON file is malformed
+     */
+    private void pretifyJson(String pathToJson) throws JsonSyntaxException {
+        final String outputPath = pathToJson + ".pretty";
+        final File in = new File(pathToJson);
+        final File out = new File(outputPath);
+        try (JsonReader reader = new JsonReader(new InputStreamReader(new FileInputStream(in), StandardCharsets.UTF_8));
+                JsonWriter writer = new JsonWriter(new OutputStreamWriter(new FileOutputStream(out), StandardCharsets.UTF_8))) {
+            prettyPrint(reader, writer);
+        } catch (IOException ex) {
+            LOGGER.error("Unable to generate pretty report, caused by: ", ex.getMessage());
+            return;
+        }
+        if (out.isFile() && in.isFile() && in.delete()) {
+            try {
+                org.apache.commons.io.FileUtils.moveFile(out, in);
+            } catch (IOException ex) {
+                LOGGER.error("Unable to generate pretty report, caused by: ", ex.getMessage());
+            }
+        }
+    }
+
+    /**
+     * Streams from a json reader to a json writer and performs pretty printing.
+     *
+     * This function is copied from https://sites.google.com/site/gson/streaming
+     *
+     * @param reader json reader
+     * @param writer json writer
+     * @throws IOException thrown if the json is malformed
+     */
+    private static void prettyPrint(JsonReader reader, JsonWriter writer) throws IOException {
+        writer.setIndent("  ");
+        while (true) {
+            final JsonToken token = reader.peek();
+            switch (token) {
+                case BEGIN_ARRAY:
+                    reader.beginArray();
+                    writer.beginArray();
+                    break;
+                case END_ARRAY:
+                    reader.endArray();
+                    writer.endArray();
+                    break;
+                case BEGIN_OBJECT:
+                    reader.beginObject();
+                    writer.beginObject();
+                    break;
+                case END_OBJECT:
+                    reader.endObject();
+                    writer.endObject();
+                    break;
+                case NAME:
+                    final String name = reader.nextName();
+                    writer.name(name);
+                    break;
+                case STRING:
+                    final String s = reader.nextString();
+                    writer.value(s);
+                    break;
+                case NUMBER:
+                    final String n = reader.nextString();
+                    writer.value(new BigDecimal(n));
+                    break;
+                case BOOLEAN:
+                    final boolean b = reader.nextBoolean();
+                    writer.value(b);
+                    break;
+                case NULL:
+                    reader.nextNull();
+                    writer.nullValue();
+                    break;
+                case END_DOCUMENT:
+                    return;
+                default:
+                    LOGGER.debug("Unexpected JSON toekn {}", token.toString());
+                    break;
+            }
         }
     }
 
@@ -198,7 +314,7 @@ public class ReportGenerator {
     public void generateReports(String outputDir, String outputFormat) throws ReportException {
         final String format = outputFormat.toUpperCase();
         final String pathToCheck = outputDir.toLowerCase();
-        if (format.matches("^(XML|HTML|VULN|ALL)$")) {
+        if (format.matches("^(XML|HTML|VULN|JSON|ALL)$")) {
             if ("XML".equalsIgnoreCase(format)) {
                 if (pathToCheck.endsWith(".xml")) {
                     generateReport("XmlReport", outputDir);
@@ -218,6 +334,14 @@ public class ReportGenerator {
                     generateReport("VulnReport", outputDir);
                 } else {
                     generateReports(outputDir, Format.VULN);
+                }
+            }
+            if ("JSON".equalsIgnoreCase(format)) {
+                if (pathToCheck.endsWith(".json")) {
+                    generateReport("JsonReport", outputDir);
+                    pretifyJson(outputDir);
+                } else {
+                    generateReports(outputDir, Format.JSON);
                 }
             }
             if ("ALL".equalsIgnoreCase(format)) {
@@ -240,55 +364,39 @@ public class ReportGenerator {
         InputStream input = null;
         String templatePath = null;
         final File f = new File(templateName);
-        if (f.exists() && f.isFile()) {
-            try {
-                templatePath = templateName;
-                input = new FileInputStream(f);
-            } catch (FileNotFoundException ex) {
-                throw new ReportException("Unable to locate template file: " + templateName, ex);
-            }
-        } else {
-            templatePath = "templates/" + templateName + ".vsl";
-            input = this.getClass().getClassLoader().getResourceAsStream(templatePath);
-        }
-        if (input == null) {
-            throw new ReportException("Template file doesn't exist: " + templatePath);
-        }
-
-        InputStreamReader reader = null;
-        OutputStreamWriter writer = null;
-
         try {
-            reader = new InputStreamReader(input, "UTF-8");
-            writer = new OutputStreamWriter(outputStream, "UTF-8");
-            if (!velocityEngine.evaluate(context, writer, templatePath, reader)) {
-                throw new ReportException("Failed to convert the template into html.");
+            if (f.exists() && f.isFile()) {
+                try {
+                    templatePath = templateName;
+                    input = new FileInputStream(f);
+                } catch (FileNotFoundException ex) {
+                    throw new ReportException("Unable to locate template file: " + templateName, ex);
+                }
+            } else {
+                templatePath = "templates/" + templateName + ".vsl";
+                input = this.getClass().getClassLoader().getResourceAsStream(templatePath);
             }
-            writer.flush();
-        } catch (UnsupportedEncodingException ex) {
-            throw new ReportException("Unable to generate the report using UTF-8", ex);
-        } catch (IOException ex) {
-            throw new ReportException("Unable to write the report", ex);
+            if (input == null) {
+                throw new ReportException("Template file doesn't exist: " + templatePath);
+            }
+
+            try (InputStreamReader reader = new InputStreamReader(input, "UTF-8");
+                    OutputStreamWriter writer = new OutputStreamWriter(outputStream, "UTF-8")) {
+                if (!velocityEngine.evaluate(context, writer, templatePath, reader)) {
+                    throw new ReportException("Failed to convert the template into html.");
+                }
+                writer.flush();
+            } catch (UnsupportedEncodingException ex) {
+                throw new ReportException("Unable to generate the report using UTF-8", ex);
+            } catch (IOException ex) {
+                throw new ReportException("Unable to write the report", ex);
+            }
         } finally {
-            if (writer != null) {
+            if (input != null) {
                 try {
-                    writer.close();
+                    input.close();
                 } catch (IOException ex) {
-                    LOGGER.trace("", ex);
-                }
-            }
-            if (outputStream != null) {
-                try {
-                    outputStream.close();
-                } catch (IOException ex) {
-                    LOGGER.trace("", ex);
-                }
-            }
-            if (reader != null) {
-                try {
-                    reader.close();
-                } catch (IOException ex) {
-                    LOGGER.trace("", ex);
+                    LOGGER.trace("Error closing input", ex);
                 }
             }
         }
@@ -315,21 +423,10 @@ public class ReportGenerator {
                 throw new ReportException("Unable to create directory '" + outFile.getParentFile().getAbsolutePath() + "'.");
             }
         }
-
-        OutputStream outputSteam = null;
-        try {
-            outputSteam = new FileOutputStream(outFile);
+        try (OutputStream outputSteam = new FileOutputStream(outFile)) {
             generateReport(templateName, outputSteam);
-        } catch (FileNotFoundException ex) {
+        } catch (IOException ex) {
             throw new ReportException("Unable to write to file: " + outFile, ex);
-        } finally {
-            if (outputSteam != null) {
-                try {
-                    outputSteam.close();
-                } catch (IOException ex) {
-                    LOGGER.trace("ignore", ex);
-                }
-            }
         }
     }
 }

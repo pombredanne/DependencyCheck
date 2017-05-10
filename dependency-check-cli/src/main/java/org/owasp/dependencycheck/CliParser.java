@@ -120,7 +120,7 @@ public final class CliParser {
                     Format.valueOf(format);
                 } catch (IllegalArgumentException ex) {
                     final String msg = String.format("An invalid 'format' of '%s' was specified. "
-                            + "Supported output formats are XML, HTML, VULN, or ALL", format);
+                            + "Supported output formats are XML, JSON, HTML, VULN, or ALL", format);
                     throw new ParseException(msg);
                 }
             }
@@ -249,7 +249,7 @@ public final class CliParser {
 
         final Option excludes = Option.builder().argName("pattern").hasArg().longOpt(ARGUMENT.EXCLUDE)
                 .desc("Specify and exclusion pattern. This option can be specified multiple times"
-                        + " and it accepts Ant style excludsions.")
+                        + " and it accepts Ant style exclusions.")
                 .build();
 
         final Option props = Option.builder(ARGUMENT.PROP_SHORT).argName("file").hasArg().longOpt(ARGUMENT.PROP)
@@ -262,7 +262,7 @@ public final class CliParser {
                 .build();
 
         final Option outputFormat = Option.builder(ARGUMENT.OUTPUT_FORMAT_SHORT).argName("format").hasArg().longOpt(ARGUMENT.OUTPUT_FORMAT)
-                .desc("The output format to write to (XML, HTML, VULN, ALL). The default is HTML.")
+                .desc("The output format to write to (XML, JSON, HTML, VULN, ALL). The default is HTML.")
                 .build();
 
         final Option verboseLog = Option.builder(ARGUMENT.VERBOSE_LOG_SHORT).argName("file").hasArg().longOpt(ARGUMENT.VERBOSE_LOG)
@@ -286,7 +286,7 @@ public final class CliParser {
                 .build();
 
         final Option experimentalEnabled = Option.builder().longOpt(ARGUMENT.EXPERIMENTAL)
-                .desc("Enables the experimental analzers.")
+                .desc("Enables the experimental analyzers.")
                 .build();
 
         final Option failOnCVSS = Option.builder().argName("score").hasArg().longOpt(ARGUMENT.FAIL_ON_CVSS)

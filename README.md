@@ -1,5 +1,7 @@
 [![Build Status](https://travis-ci.org/jeremylong/DependencyCheck.svg?branch=master)](https://travis-ci.org/jeremylong/DependencyCheck) [![Coverity Scan Build Status](https://scan.coverity.com/projects/1654/badge.svg)](https://scan.coverity.com/projects/dependencycheck) [![Codacy Badge](https://api.codacy.com/project/badge/Grade/6b6021d481dc41a888c5da0d9ecf9494)](https://www.codacy.com/app/jeremylong/DependencyCheck?utm_source=github.com&amp;utm_medium=referral&amp;utm_content=jeremylong/DependencyCheck&amp;utm_campaign=Badge_Grade) [![Apache 2.0 License](https://img.shields.io/badge/license-Apache%202-blue.svg)](https://www.apache.org/licenses/LICENSE-2.0.txt)
 
+[![Black Hat Arsenal](https://www.toolswatch.org/badges/arsenal/2015.svg)](https://www.toolswatch.org/2015/06/black-hat-arsenal-usa-2015-speakers-lineup/) [![Black Hat Arsenal](https://www.toolswatch.org/badges/arsenal/2014.svg)](https://www.toolswatch.org/2014/06/black-hat-usa-2014-arsenal-tools-speaker-list/) [![Black Hat Arsenal](https://www.toolswatch.org/badges/arsenal/2013.svg)](https://www.toolswatch.org/2013/06/announcement-blackhat-arsenal-usa-2013-selected-tools/)
+
 Dependency-Check
 ================
 
@@ -99,32 +101,38 @@ Then load the resulting 'DependencyCheck-Report.html' into your favorite browser
 
 ### Docker
 
-In the following example it is assumed that the source to be checked is in the actual directory. A persistent data directory and a persistent report directory is used so that the container can be destroyed after running it to make sure that you use the newst version, always.
-```
-# After the first run, feel free to change the owner of the directories to the owner of the creted files and the permissions to 744
-DATA_DIRECTORY=$HOME/OWASP-Dependency-Check/data
-REPORT_DIRECTORY=/$HOME/OWASP-Dependency-Check/reports
+In the following example it is assumed that the source to be checked is in the current working directory. Persistent data and report directories are used, allowing you to destroy the container after running.
 
-if [ ! -d $DATA_DIRECTORY ]; then
-	echo "Initially creating persistent directories"
-        mkdir -p $DATA_DIRECTORY
-        chmod -R 777 $DATA_DIRECTORY
-    
-        mkdir -p $REPORT_DIRECTORY
-        chmod -R 777 $REPORT_DIRECTORY
+```
+#!/bin/sh
+
+OWASPDC_DIRECTORY=$HOME/OWASP-Dependency-Check
+DATA_DIRECTORY="$OWASPDC_DIRECTORY/data"
+REPORT_DIRECTORY="$OWASPDC_DIRECTORY/reports"
+
+if [ ! -d "$DATA_DIRECTORY" ]; then
+    echo "Initially creating persistent directories"
+    mkdir -p "$DATA_DIRECTORY"
+    chmod -R 777 "$DATA_DIRECTORY"
+
+    mkdir -p "$REPORT_DIRECTORY"
+    chmod -R 777 "$REPORT_DIRECTORY"
 fi
 
-docker pull owasp/dependency-check # Make sure it is the actual version
+# Make sure we are using the latest version
+docker pull owasp/dependency-check
 
 docker run --rm \
-        --volume $(pwd):/src \
-        --volume $DATA_DIRECTORY:/usr/share/dependency-check/data \
-        --volume $REPORT_DIRECTORY:/report \
-        --name dependency-check \
-        dc \
-        --suppression "/src/security/dependency-check-suppression.xml"\
-        --format "ALL" \
-        --project "My OWASP Dependency Check Projekt" \
+    --volume $(pwd):/src \
+    --volume "$DATA_DIRECTORY":/usr/share/dependency-check/data \
+    --volume "$REPORT_DIRECTORY":/report \
+    owasp/dependency-check \
+    --scan /src \
+    --format "ALL" \
+    --project "My OWASP Dependency Check Project"
+    # Use suppression like this: (/src == $pwd)
+    # --suppression "/src/security/dependency-check-suppression.xml"
+
 ```
 
 
@@ -144,7 +152,7 @@ Dependency-Check is Copyright (c) 2012-2016 Jeremy Long. All Rights Reserved.
 
 Permission to modify and redistribute is granted under the terms of the Apache 2.0 license. See the [LICENSE.txt](https://raw.githubusercontent.com/jeremylong/DependencyCheck/master/LICENSE.txt) file for the full license.
 
-Dependency-Check makes use of several other open source libraries. Please see the [NOTICE.txt] [notices] file for more information.
+Dependency-Check makes use of several other open source libraries. Please see the [NOTICE.txt][notices] file for more information.
 
 
   [wiki]: https://github.com/jeremylong/DependencyCheck/wiki
