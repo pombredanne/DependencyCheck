@@ -48,16 +48,14 @@ import org.apache.maven.shared.dependency.graph.DependencyGraphBuilderException;
 import org.apache.maven.shared.dependency.graph.DependencyNode;
 import org.owasp.dependencycheck.Engine;
 import org.owasp.dependencycheck.data.nexus.MavenArtifact;
-import org.owasp.dependencycheck.data.nvdcve.CveDB;
 import org.owasp.dependencycheck.data.nvdcve.DatabaseException;
-import org.owasp.dependencycheck.data.nvdcve.DatabaseProperties;
 import org.owasp.dependencycheck.dependency.Confidence;
 import org.owasp.dependencycheck.dependency.Dependency;
 import org.owasp.dependencycheck.dependency.Identifier;
 import org.owasp.dependencycheck.dependency.Vulnerability;
+import org.owasp.dependencycheck.exception.DependencyNotFoundException;
 import org.owasp.dependencycheck.exception.ExceptionCollection;
-import org.owasp.dependencycheck.exception.ReportException;
-import org.owasp.dependencycheck.reporting.ReportGenerator;
+import org.owasp.dependencycheck.utils.Filter;
 import org.owasp.dependencycheck.utils.Settings;
 import org.sonatype.plexus.components.sec.dispatcher.DefaultSecDispatcher;
 import org.sonatype.plexus.components.sec.dispatcher.SecDispatcher;
@@ -403,6 +401,21 @@ public abstract class BaseDependencyCheckMojo extends AbstractMojo implements Ma
     @SuppressWarnings("CanBeFinal")
     @Parameter(property = "skipProvidedScope", defaultValue = "false", required = false)
     private boolean skipProvidedScope = false;
+
+    /**
+     * Skip Analysis for Provided Scope Dependencies.
+     */
+    @SuppressWarnings("CanBeFinal")
+    @Parameter(property = "skipSystemScope", defaultValue = "false", required = false)
+    private boolean skipSystemScope = false;
+
+    /**
+     * Skip analysis for dependencies which type matches this regular expression.
+     */
+    @SuppressWarnings("CanBeFinal")
+    @Parameter(property = "skipArtifactType", required = false)
+    private String skipArtifactType;
+
     /**
      * The data directory, hold DC SQL DB.
      */
@@ -459,6 +472,17 @@ public abstract class BaseDependencyCheckMojo extends AbstractMojo implements Ma
     @Parameter(property = "externalReport")
     @Deprecated
     private String externalReport = null;
+
+    /**
+     * The artifact scope filter.
+     */
+    private Filter<String> artifactScopeExcluded;
+
+    /**
+     * Filter for artifact type.
+     */
+    private Filter<String> artifactTypeExcluded;
+
 
     // </editor-fold>
     //<editor-fold defaultstate="collapsed" desc="Base Maven implementation">
@@ -631,21 +655,51 @@ public abstract class BaseDependencyCheckMojo extends AbstractMojo implements Ma
             List<DependencyNode> nodes, ProjectBuildingRequest buildingRequest) {
         ExceptionCollection exCol = null;
         for (DependencyNode dependencyNode : nodes) {
-            exCol = collectDependencies(engine, project, dependencyNode.getChildren(), buildingRequest);
-            if (excludeFromScan(dependencyNode.getArtifact().getScope())) {
+            if (artifactScopeExcluded.passes(dependencyNode.getArtifact().getScope()) ||
+                artifactTypeExcluded.passes(dependencyNode.getArtifact().getType())) {
                 continue;
             }
+            exCol = collectDependencies(engine, project, dependencyNode.getChildren(), buildingRequest);
             try {
-                final ArtifactCoordinate coordinate = TransferUtils.toArtifactCoordinate(dependencyNode.getArtifact());
-                final Artifact result = artifactResolver.resolveArtifact(buildingRequest, coordinate).getArtifact();
-                if (result.isResolved() && result.getFile() != null) {
-                    final List<Dependency> deps = engine.scan(result.getFile().getAbsoluteFile(),
+                boolean isResolved = false;
+                File artifactFile = null;
+                String artifactId = null;
+                String groupId = null;
+                String version = null;
+                if (org.apache.maven.artifact.Artifact.SCOPE_SYSTEM.equals(dependencyNode.getArtifact().getScope())) {
+                    for (org.apache.maven.model.Dependency d : project.getDependencies()) {
+                        final Artifact a = dependencyNode.getArtifact();
+                        if (d.getSystemPath() != null && artifactsMatch(d, a)) {
+
+                            artifactFile = new File(d.getSystemPath());
+                            isResolved = artifactFile.isFile();
+                            groupId = a.getGroupId();
+                            artifactId = a.getArtifactId();
+                            version = a.getVersion();
+                            break;
+                        }
+                    }
+                    if (!isResolved) {
+                        getLog().error("Unable to resolve system scoped dependency: " + dependencyNode.toNodeString());
+                        exCol.addException(new DependencyNotFoundException("Unable to resolve system scoped dependency: " + dependencyNode.toNodeString()));
+                    }
+                } else {
+                    final ArtifactCoordinate coordinate = TransferUtils.toArtifactCoordinate(dependencyNode.getArtifact());
+                    final Artifact result = artifactResolver.resolveArtifact(buildingRequest, coordinate).getArtifact();
+                    isResolved = result.isResolved();
+                    artifactFile = result.getFile();
+                    groupId = result.getGroupId();
+                    artifactId = result.getArtifactId();
+                    version = result.getVersion();
+                }
+                if (isResolved && artifactFile != null) {
+                    final List<Dependency> deps = engine.scan(artifactFile.getAbsoluteFile(),
                             project.getName() + ":" + dependencyNode.getArtifact().getScope());
                     if (deps != null) {
                         if (deps.size() == 1) {
                             final Dependency d = deps.get(0);
                             if (d != null) {
-                                final MavenArtifact ma = new MavenArtifact(result.getGroupId(), result.getArtifactId(), result.getVersion());
+                                final MavenArtifact ma = new MavenArtifact(groupId, artifactId, version);
                                 d.addAsEvidence("pom", ma, Confidence.HIGHEST);
                                 if (getLog().isDebugEnabled()) {
                                     getLog().debug(String.format("Adding project reference %s on dependency %s",
@@ -681,6 +735,33 @@ public abstract class BaseDependencyCheckMojo extends AbstractMojo implements Ma
             }
         }
         return exCol;
+    }
+
+    /**
+     * Determines if the groupId, artifactId, and version of the Maven
+     * dependency and artifact match.
+     *
+     * @param d the Maven dependency
+     * @param a the Maven artifact
+     * @return true if the groupId, artifactId, and version match
+     */
+    private static boolean artifactsMatch(org.apache.maven.model.Dependency d, Artifact a) {
+        return (isEqualOrNull(a.getArtifactId(), d.getArtifactId()))
+                && (isEqualOrNull(a.getGroupId(), d.getGroupId()))
+                && (isEqualOrNull(a.getVersion(), d.getVersion()));
+    }
+
+    /**
+     * Compares two strings for equality; if both strings are null they are
+     * considered equal.
+     *
+     * @param left the first string to compare
+     * @param right the second string to compare
+     * @return true if the strings are equal or if they are both null; otherwise
+     * false.
+     */
+    private static boolean isEqualOrNull(String left, String right) {
+        return (left != null && left.equals(right)) || (left == null && right == null);
     }
 
     /**
@@ -757,6 +838,10 @@ public abstract class BaseDependencyCheckMojo extends AbstractMojo implements Ma
             return "dependency-check-report.xml#";
         } else if ("VULN".equalsIgnoreCase(this.format)) {
             return "dependency-check-vulnerability";
+        } else if ("JSON".equalsIgnoreCase(this.format)) {
+            return "dependency-check-report.json";
+        } else if ("CSV".equalsIgnoreCase(this.format)) {
+            return "dependency-check-report.csv";
         } else {
             getLog().warn("Unknown report format used during site generation.");
             return "dependency-check-report";
@@ -919,6 +1004,8 @@ public abstract class BaseDependencyCheckMojo extends AbstractMojo implements Ma
         Settings.setStringIfNotEmpty(Settings.KEYS.CVE_SCHEMA_2_0, cveUrl20Base);
         Settings.setIntIfNotNull(Settings.KEYS.CVE_CHECK_VALID_FOR_HOURS, cveValidForHours);
 
+        artifactScopeExcluded = new ArtifactScopeExcluded(skipTestScope, skipProvidedScope, skipSystemScope, skipRuntimeScope);
+        artifactTypeExcluded = new ArtifactTypeExcluded(skipArtifactType);
     }
 
     /**
@@ -946,24 +1033,6 @@ public abstract class BaseDependencyCheckMojo extends AbstractMojo implements Ma
             }
         }
         return null;
-    }
-
-    /**
-     * Tests is the artifact should be included in the scan (i.e. is the
-     * dependency in a scope that is being scanned).
-     *
-     * @param scope the scope of the artifact to test
-     * @return <code>true</code> if the artifact is in an excluded scope;
-     * otherwise <code>false</code>
-     */
-    protected boolean excludeFromScan(String scope) {
-        if (skipTestScope && org.apache.maven.artifact.Artifact.SCOPE_TEST.equals(scope)) {
-            return true;
-        }
-        if (skipProvidedScope && org.apache.maven.artifact.Artifact.SCOPE_PROVIDED.equals(scope)) {
-            return true;
-        }
-        return skipRuntimeScope && !org.apache.maven.artifact.Artifact.SCOPE_RUNTIME.equals(scope);
     }
 
     /**
@@ -999,32 +1068,12 @@ public abstract class BaseDependencyCheckMojo extends AbstractMojo implements Ma
     }
 
     /**
-     * Generates the reports for a given dependency-check engine.
+     * Returns the artifact scope excluded filter.
      *
-     * @param engine a dependency-check engine
-     * @param p the Maven project
-     * @param outputDir the directory path to write the report(s)
-     * @throws ReportException thrown if there is an error writing the report
+     * @return the artifact scope excluded filter
      */
-    protected void writeReports(Engine engine, MavenProject p, File outputDir) throws ReportException {
-        DatabaseProperties prop = null;
-        try (CveDB cve = CveDB.getInstance()) {
-            prop = cve.getDatabaseProperties();
-        } catch (DatabaseException ex) {
-            //TODO shouldn't this throw an exception?
-            if (getLog().isDebugEnabled()) {
-                getLog().debug("Unable to retrieve DB Properties", ex);
-            }
-        }
-        final ReportGenerator r = new ReportGenerator(p.getName(), p.getGroupId(), p.getArtifactId(), p.getVersion(),
-                engine.getDependencies(), engine.getAnalyzers(), prop);
-        try {
-            r.generateReports(outputDir.getAbsolutePath(), format);
-        } catch (ReportException ex) {
-            final String msg = String.format("Error generating the report for %s", p.getName());
-            throw new ReportException(msg, ex);
-        }
-
+    protected Filter<String> getArtifactScopeExcluded() {
+        return artifactScopeExcluded;
     }
 
     //<editor-fold defaultstate="collapsed" desc="Methods to fail build or show summary">
